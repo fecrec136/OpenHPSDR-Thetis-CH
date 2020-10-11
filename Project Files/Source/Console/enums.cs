@@ -66,6 +66,7 @@
     {
         HPSDR = 0,
         HERMES,
+        HERMESLITE,
         ANAN10,
         ANAN10E,
         ANAN100,
@@ -82,6 +83,7 @@
         FIRST = -1,
         HPSDR,
         HERMES,
+        HERMESLITE,
         ANAN10,
         ANAN10E,
         ANAN100,
