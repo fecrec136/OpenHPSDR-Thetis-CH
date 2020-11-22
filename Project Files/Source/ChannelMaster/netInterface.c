@@ -1234,6 +1234,12 @@ void LRAudioSwap (int swap)
 }
 
 PORT
+void setDiscoveryBoardType (int boardType)
+{
+	prn->discovery.BoardType = boardType;
+}
+
+PORT
 void create_rnet() 
 {
 	int i;

@@ -327,5 +327,8 @@ namespace Thetis
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void LRAudioSwap(int swap);
 
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void setDiscoveryBoardType(int boardType);
+
     }
 }

@@ -578,7 +578,15 @@ void WriteMainLoop(char* bufp)
 				((prn->mic.mic_ptt & 1) << 6);
 			C2 = (prn->mic.line_in_gain & 0b00011111) | ((prn->puresignal_run & 1) << 6);				
 			C3 = prn->user_dig_out & 0b00001111;
-			C4 = (prn->adc[0].rx_step_attn & 0b00011111) | 0b00100000;
+
+			if (prn->discovery.BoardType == HermesLite)
+			{
+				C4 = (prn->adc[0].rx_step_attn & 0b00111111) | 0b01000000;
+			}
+			else
+			{
+				C4 = (prn->adc[0].rx_step_attn & 0b00011111) | 0b00100000;
+			}
 			break;
 
 		case 12: // Step ATT control
