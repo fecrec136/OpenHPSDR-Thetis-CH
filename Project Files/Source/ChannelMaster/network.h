@@ -219,6 +219,8 @@ typedef struct CACHE_ALIGN _radionet
 		int epwm_max;
 		int epwm_min;
 		int pa;
+		int tx_latency;	// MI0BOT: Delay in TX buffer
+		int ptt_hang;	// MI0BOT: Delay before PTT drops out after TX buffer empties 
 		unsigned mic_in_seq_no;
 		unsigned mic_in_seq_err;
 		unsigned mic_out_seq_no;

@@ -1240,6 +1240,18 @@ void setDiscoveryBoardType (int boardType)
 }
 
 PORT
+void setTxLatency (int txLatency)
+{
+	prn->tx[0].tx_latency = txLatency;
+}
+
+PORT
+void setPttHang (int pttHang)
+{
+	prn->tx[0].ptt_hang = pttHang;
+}
+
+PORT
 void create_rnet() 
 {
 	int i;
@@ -1341,6 +1353,8 @@ void create_rnet()
 			prn->tx[i].epwm_max = 0;
 			prn->tx[i].epwm_min = 0;
 			prn->tx[i].pa = 0;
+			prn->tx[i].tx_latency = 20;
+			prn->tx[i].ptt_hang = 12;
 			prn->tx[i].mic_in_seq_no = 0;
 			prn->tx[i].mic_in_seq_err = 0;
 			prn->tx[i].mic_out_seq_no = 0;

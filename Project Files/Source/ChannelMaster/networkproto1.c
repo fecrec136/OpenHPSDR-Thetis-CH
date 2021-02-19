@@ -645,13 +645,21 @@ void WriteMainLoop(char* bufp)
 			C3 = 0;
 			C4 = 0;
 			break;
+
+		case 17: // TX latency and PTT hang
+			C0 |= 0x2e; //C0 0010 111x
+			C1 = 0;
+			C2 = 0;
+			C3 = (prn->tx[0].ptt_hang & 0b00011111);
+			C4 = (prn->tx[0].tx_latency & 0b01111111);
+			break;
 		}			
 		txbptr[3] = C0;							// add the C0-C4 bytes to USB frame
 		txbptr[4] = C1;
 		txbptr[5] = C2;
 		txbptr[6] = C3;
 		txbptr[7] = C4;
-		if (out_control_idx < 16)				// ready for next USB frame
+		if (out_control_idx < 17)				// ready for next USB frame
 			out_control_idx++;
 		else
 			out_control_idx = 0;
