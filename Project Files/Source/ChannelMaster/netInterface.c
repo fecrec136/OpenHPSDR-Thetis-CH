@@ -1002,6 +1002,17 @@ void SetCWX(int bit)
 }
 
 PORT
+void SetCWXPTT(int bit) 
+{
+	if (prn->tx[0].cwx_ptt != bit) 
+	{
+		prn->tx[0].cwx_ptt = bit;
+		if (listenSock != INVALID_SOCKET)
+			CmdHighPriority();
+	}
+}
+
+PORT
 int getHaveSync() 
 {
 	return HaveSync;
@@ -1345,6 +1356,7 @@ void create_rnet()
 			prn->tx[i].frequency = 0;
 			prn->tx[i].sampling_rate = 192;
 			prn->tx[i].cwx = 0;
+			prn->tx[i].cwx_ptt = 0;
 			prn->tx[i].dash = 0;
 			prn->tx[i].dot = 0;
 			prn->tx[i].ptt_out = 0;

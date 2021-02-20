@@ -208,6 +208,7 @@ typedef struct CACHE_ALIGN _radionet
 		int frequency;
 		int sampling_rate;
 		int cwx;
+		int cwx_ptt;
 		int dash;
 		int dot;
 		int ptt_out;

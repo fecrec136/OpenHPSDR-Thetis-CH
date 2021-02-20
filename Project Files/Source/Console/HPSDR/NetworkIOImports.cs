@@ -277,6 +277,9 @@ namespace Thetis
         public static extern void SetCWX(int bit);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetCWXPTT(int bit);
+
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetCWIambic(int bit);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
