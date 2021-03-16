@@ -118,11 +118,20 @@ namespace Thetis
                 }
                 else
                 {
-                    if (tx && VFOTBX)
-                        bits = TXABitMasks[idxb];
-                    else if (tx)
-                        bits = TXABitMasks[idx];
-                    else bits = RXABitMasks[idx];
+                    if (tx)
+                    {
+						if (VFOTBX)
+							bits = TXABitMasks[idxb];
+						else
+							bits = TXABitMasks[idx];
+                    }
+					else
+                    {
+						if (VFOTBX)
+							bits = RXABitMasks[idxb];
+						else
+							bits = RXABitMasks[idx];
+                    }
                 }
 			}
             System.Console.WriteLine("Bits: " + bits + " Band: " + (int)band + " Band: " + (int)bandb); 
