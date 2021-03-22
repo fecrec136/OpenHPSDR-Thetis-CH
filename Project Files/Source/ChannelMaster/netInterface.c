@@ -660,6 +660,15 @@ void SetLineBoost(int bits)
 }
 
 PORT
+void SetResetOnDisconnect(int bit) 
+{
+	if (prn->reset_on_disconnect != bit)
+	{
+		prn->reset_on_disconnect = bit & 0x1;
+	}
+}
+
+PORT
 void SetPureSignal(int bit) 
 {
 	if (prn->puresignal_run != bit)
@@ -1245,19 +1254,19 @@ void LRAudioSwap (int swap)
 }
 
 PORT
-void setDiscoveryBoardType (int boardType)
+void SetDiscoveryBoardType (int boardType)
 {
 	prn->discovery.BoardType = boardType;
 }
 
 PORT
-void setTxLatency (int txLatency)
+void SetTxLatency (int txLatency)
 {
 	prn->tx[0].tx_latency = txLatency;
 }
 
 PORT
-void setPttHang (int pttHang)
+void SetPttHang (int pttHang)
 {
 	prn->tx[0].ptt_hang = pttHang;
 }
@@ -1380,6 +1389,8 @@ void create_rnet()
 
 		prn->puresignal_run = 0;
 
+		prn->reset_on_disconnect = 0;	// MI0BOT: Intialise to not reset on software disconnect
+		
 		for (i = 0; i < 6; i++)
 			prn->discovery.MACAddr[i] = 0;
 		prn->discovery.BoardType = 0;

@@ -453,7 +453,7 @@ void WriteMainLoop(char* bufp)
 
 			// the frequency assignments will need to change
 			// when we work out a mapping for the ADC channels
-		case 1: //TX VFO
+		case 1: //TX VFO 0x01
 			C0 |= 2;
 			C1 = (prn->tx[0].frequency >> 24) & 0xff; // byte 0 of tx freq 
 			C2 = (prn->tx[0].frequency >> 16) & 0xff; // byte 1 of tx freq 
@@ -461,7 +461,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (prn->tx[0].frequency) & 0xff; // byte 3 of tx freq 
 			break;
 
-		case 2: //RX1 VFO (DDC0)
+		case 2: //RX1 VFO (DDC0) 0x02
 			C0 |= 4;
 			// DDC0 is always RX0 freqency, except if Puresignal TX with hermes-II
 			if ((nddc == 2) && (XmitBit == 1) && (prn->puresignal_run))
@@ -474,7 +474,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx1 freq 
 			break;
 
-		case 3: //RX2 VFO (DDC1)
+		case 3: //RX2 VFO (DDC1) 0x03
 			C0 |= 6;
 			// DDC1 is TX freq if Hermes-II && TX && Puresignal; 
 			// RX1 freq if Orion;
@@ -494,7 +494,7 @@ void WriteMainLoop(char* bufp)
 			// ADC assignments hardwired according to the configuration (see spreadsheet)
 			// orion: taken from setup form
 			// Hermes/Hermes-E don't use this data
-		case 4: // ADC assignments & ADC Tx ATT
+		case 4: // ADC assignments & ADC Tx ATT 0x0e
 			C0 |= 0x1c; //C0 0001 110x
 			C1 = P1_adc_cntrl & 0xFF;
 			C2 = (P1_adc_cntrl >> 8) & 0b0011111111;
@@ -502,7 +502,7 @@ void WriteMainLoop(char* bufp)
 			C4 = 0;
 			break;
 
-		case 5: //RX3 VFO (DDC2)
+		case 5: //RX3 VFO (DDC2) 0x04
 			C0 |= 8;
 			// if Orion, DDC2 is RX2 frequency; else TX frequency for Hermes
 			if(nddc == 5)
@@ -515,7 +515,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx3 freq 
 			break;
 
-		case 6: //RX4 VFO (DDC3)
+		case 6: //RX4 VFO (DDC3) 0x05
 			C0 |= 0x0a;
 			// DDC3 is TX frequency always
 			ddc_freq = prn->tx[0].frequency;
@@ -525,7 +525,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx4 freq 
 			break;
 
-		case 7: //RX5 VFO (DDC4)
+		case 7: //RX5 VFO (DDC4) 0x06
 			C0 |= 0x0c;
 			// DDC4 is TX frequency for Orion2 TX with puresignal, otherwise not used, so make TX always
 			ddc_freq = prn->tx[0].frequency;
@@ -535,7 +535,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx5 freq 
 			break;
 
-		case 8: //RX6 VFO
+		case 8: //RX6 VFO 0x07
 			C0 |= 0x0e;
 			// DDC5 not used
 			ddc_freq = prn->rx[0].frequency;
@@ -545,7 +545,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx6 freq 
 			break;
 
-		case 9: //RX7 VFO
+		case 9: //RX7 VFO 0x08
 			C0 |= 0x10;
 			// DDC6 not used
 			ddc_freq = prn->rx[0].frequency;
@@ -555,7 +555,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (ddc_freq) & 0xff; // byte 3 of rx7 freq 
 			break;
 
-		case 10:
+		case 10: // 0x09
 			C0 |= 0x12; //C0 0001 001x
 			C1 = prn->tx[0].drive_level;				// SWR adjustment before this in SetOutputPowerFactor()
 			C2 = ((prn->mic.mic_boost & 1) | ((prn->mic.line_in & 1) << 1) | ApolloFilt |
@@ -570,7 +570,7 @@ void WriteMainLoop(char* bufp)
 				((prbpfilter->_17_15_LPF & 1) << 6);
 			break;
 
-		case 11: //Preamp control
+		case 11: //Preamp control 0x0a
 			C0 |= 0x14; //C0 0001 010x
 			C1 = (prn->rx[0].preamp & 1) | ((prn->rx[1].preamp & 1) << 1) |
 				((prn->rx[2].preamp & 1) << 2) | ((prn->rx[0].preamp & 1) << 3) |
@@ -589,7 +589,7 @@ void WriteMainLoop(char* bufp)
 			}
 			break;
 
-		case 12: // Step ATT control
+		case 12: // Step ATT control 0x0b
 			C0 |= 0x16; //C0 0001 011x
 			if (XmitBit)
 				C1 = 0x1F;
@@ -611,7 +611,7 @@ void WriteMainLoop(char* bufp)
 
 			// 0x18, 1A are reserved
 
-		case 13: // CW
+		case 13: // CW 0x0f
 			C0 |= 0x1e; //C0 0001 111x
 			C1 = prn->cw.cw_enable;
 			C2 = prn->cw.sidetone_level; 
@@ -619,7 +619,7 @@ void WriteMainLoop(char* bufp)
 			C4 = 0;
 			break;
 
-		case 14: // CW
+		case 14: // CW 0x10
 			C0 |= 0x20; //C0 0010 000x
 			C1 = (prn->cw.hang_delay >> 2) & 0b11111111;
 			C2 = (prn->cw.hang_delay & 0b00000011);
@@ -627,7 +627,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (prn->cw.sidetone_freq) & 0b00001111;
 			break;
 
-		case 15: // EER PWM
+		case 15: // EER PWM 0x11
 			C0 |= 0x22; //C0 0010 001x
 			C1 = (prn->tx[0].epwm_min >> 2) & 0b11111111;
 			C2 = (prn->tx[0].epwm_min & 0b00000011);
@@ -635,7 +635,7 @@ void WriteMainLoop(char* bufp)
 			C4 = (prn->tx[0].epwm_max & 0b00000011);
 			break;
 
-		case 16: // BPF2
+		case 16: // BPF2 0x12
 			C0 |= 0x24; //C0 0010 010x
 			C1 = (prbpfilter2->_13MHz_HPF & 1) | ((prbpfilter2->_20MHz_HPF & 1) << 1) |
 				((prbpfilter2->_9_5MHz_HPF & 1) << 2) | ((prbpfilter2->_6_5MHz_HPF & 1) << 3) |
@@ -646,12 +646,20 @@ void WriteMainLoop(char* bufp)
 			C4 = 0;
 			break;
 
-		case 17: // TX latency and PTT hang
+		case 17: // TX latency and PTT hang 0x17
 			C0 |= 0x2e; //C0 0010 111x
 			C1 = 0;
 			C2 = 0;
 			C3 = (prn->tx[0].ptt_hang & 0b00011111);
 			C4 = (prn->tx[0].tx_latency & 0b01111111);
+			break;
+
+		case 18: // Reset on disconnect 0x3a
+			C0 |= 0x74; //C0 0111 010x
+			C1 = 0;
+			C2 = 0;
+			C3 = 0;
+			C4 = prn->reset_on_disconnect;
 			break;
 		}			
 		txbptr[3] = C0;							// add the C0-C4 bytes to USB frame
@@ -659,7 +667,7 @@ void WriteMainLoop(char* bufp)
 		txbptr[5] = C2;
 		txbptr[6] = C3;
 		txbptr[7] = C4;
-		if (out_control_idx < 17)				// ready for next USB frame
+		if (out_control_idx < 18)				// ready for next USB frame
 			out_control_idx++;
 		else
 			out_control_idx = 0;

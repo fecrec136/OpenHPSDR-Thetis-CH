@@ -100,6 +100,7 @@ typedef struct CACHE_ALIGN _radionet
 	WSANETWORKEVENTS wsaProcessEvents;
 
 	int hardware_LEDs;
+	int reset_on_disconnect;	// MI0BOT: Reset on software disconnect
 
 	// puresignal settings
 	int puresignal_run;

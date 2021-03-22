@@ -331,13 +331,16 @@ namespace Thetis
         public static extern void LRAudioSwap(int swap);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void setDiscoveryBoardType(int boardType);
+        public static extern void SetDiscoveryBoardType(int boardType);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void setTxLatency(int txLatency);
+        public static extern void SetTxLatency(int txLatency);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void setPttHang(int pttHang);
+        public static extern void SetPttHang(int pttHang);
+
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetResetOnDisconnect(int bit);
 
     }
 }
