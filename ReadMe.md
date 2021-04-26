@@ -4,7 +4,7 @@
 # 2.8.12 Beta 2 (2021-03-21)
 
 - corrected Tx filter selection when Tx'ing on VFO B
-- added option to allow CAT too control frequency of VFO B
+- added option to allow CAT to control frequency of VFO B
 - corrected bug where 160M Tx filter wasn't ticked
 
 # 2.8.12 Beta 1 (2021-02-25)
