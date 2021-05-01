@@ -6,6 +6,7 @@
 - added option to cause HL2 reset on disconnect
 - corrected bug where CW on VFO A blocked Tx on VFO Beta
 - changed Drive control to better reflect use with HL2's 16 stage Tx attenuator 
+- disabled packet reorder as it was causing Thetis to crash if it couldn't connect to HL2
 
 # 2.8.12 Beta 2 (2021-03-21)
 
