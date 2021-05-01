@@ -28,12 +28,12 @@ int out_control_idx = 0;
 int MetisLastRecvSeq = 0;
 int PreviousTXBit = 0;							// used to detect TX/RX change
 unsigned int MetisOutBoundSeqNum;
-PRO prop;
+//PRO prop;
 
 int SendStartToMetis(void) {
 	int i;
 	int starting_seq;
-	prop = create_pro(1, 1024, 16, 5);
+	//prop = create_pro(1, 1024, 16, 5);
 	struct outdgram {
 		unsigned char packetbuf[64];
 	} outpacket;
@@ -95,7 +95,7 @@ int SendStopToMetis() {
 	if (MetisLastRecvSeq != starting_seq) {
 		return -1;
 	}
-	destroy_pro (prop);
+	//destroy_pro (prop);
 	return 0;
 }
 
@@ -179,7 +179,7 @@ int MetisReadDirect(unsigned char* bufp) {
 					printf("MRD: sync error on frame %d\n", seqnum);
 				}
 				memcpy(bufp, inpacket.readbuf + 8, 1024);
-				xpro(prop, seqnum, bufp); // resequence out of order packets
+				//xpro(prop, seqnum, bufp); // resequence out of order packets
 				if (seqnum != (1 + MetisLastRecvSeq)) {
 					SeqError += 1;
 				}
