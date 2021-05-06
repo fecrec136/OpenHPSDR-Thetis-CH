@@ -102,6 +102,34 @@ typedef struct CACHE_ALIGN _radionet
 	int hardware_LEDs;
 	int reset_on_disconnect;	// MI0BOT: Reset on software disconnect
 
+	struct _i2c
+	{
+#pragma pack(push, 1)
+		union
+		{
+			unsigned char i2c_control;
+			struct {
+				unsigned char ctrl_send : 1, // bit 00
+							  ctrl_read : 1, // bit 01
+							  ctrl_stop : 1, // bit 02   
+						   ctrl_request : 1, // bit 03
+						     ctrl_error : 1, // bit 04
+					ctrl_read_available : 1, // bit 05
+					                    : 1, // bit 06
+					                    : 1; // bit 07
+			};
+		};
+#pragma pack(pop)
+
+		unsigned char bus;
+		unsigned char address;
+		unsigned char control;
+		unsigned char write_data;
+		unsigned char returned_address;
+		unsigned char read_data[4];
+
+	} i2c;
+
 	// puresignal settings
 	int puresignal_run;
 

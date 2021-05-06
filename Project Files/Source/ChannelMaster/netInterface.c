@@ -1272,6 +1272,54 @@ void SetPttHang (int pttHang)
 }
 
 PORT
+void I2CReadInitiate(int bus, int address, int control)
+{
+	prn->i2c.bus = bus;
+	prn->i2c.address = address;
+	prn->i2c.control = control;
+
+	prn->i2c.i2c_control = 0;
+	prn->i2c.ctrl_read = 1;
+	prn->i2c.ctrl_stop = 1;
+	prn->i2c.ctrl_request = 1;
+	prn->i2c.ctrl_send = 1;
+}
+
+PORT
+void I2CWriteInitiate(int bus, int address, int control, int data)
+{
+	prn->i2c.bus = bus;
+	prn->i2c.address = address;
+	prn->i2c.control = control;
+	prn->i2c.write_data = data;
+
+	prn->i2c.i2c_control = 0;
+	prn->i2c.ctrl_read = 0;
+	prn->i2c.ctrl_stop = 1;
+	prn->i2c.ctrl_request = 1;
+	prn->i2c.ctrl_send = 1;
+}
+
+PORT
+int I2CResponse()
+{
+	int return_code = 1;
+
+	if (prn->i2c.ctrl_error)
+	{
+		return_code = -1;
+	}
+	else if (prn->i2c.ctrl_read_available)
+	{
+		prn->i2c.i2c_control = 0;
+
+		return_code = (prn->i2c.read_data[2] << 8) | prn->i2c.read_data[3];
+	}
+
+	return return_code;
+}
+
+PORT
 void create_rnet() 
 {
 	int i;
@@ -1298,6 +1346,16 @@ void create_rnet()
 		prn->dash_in = 0;
 		prn->cc_seq_no = 0;
 		prn->cc_seq_err = 0;
+
+		prn->i2c.i2c_control = 0;
+		prn->i2c.address = 0;
+		prn->i2c.control = 0;
+		prn->i2c.write_data = 0;
+		prn->i2c.returned_address = 0;
+		prn->i2c.read_data[0] = 0;
+		prn->i2c.read_data[1] = 0;
+		prn->i2c.read_data[2] = 0;
+		prn->i2c.read_data[3] = 0;
 
 		prn->cw.mode_control = 0;
 		prn->cw.sidetone_level = 0;
