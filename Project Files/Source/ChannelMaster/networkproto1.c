@@ -457,8 +457,15 @@ void WriteMainLoop(char* bufp)
 			{
 				C0 |= (0x3d<<1) | (prn->i2c.ctrl_request << 7);	//I2C2 0x3d
 			}
+
+			unsigned char address = prn->i2c.address;
+
+			if (0x7f < prn->i2c.address) 
+			{
+				address = address >> 1;
+			}
 		        
-			C2 = (prn->i2c.ctrl_stop << 7) | (prn->i2c.address >> 1);
+			C2 = (prn->i2c.ctrl_stop << 7) | address;
 
 			if (prn->i2c.ctrl_read)
 				C1 = 0x07; 
