@@ -1,5 +1,9 @@
 
-# Latest Release v2.8.12 Beta 3 May 01, 2021
+# Latest Release v2.8.12 Beta 4 May 08, 2021
+
+# 2.8.12 Beta 4 (2021-05-08)
+
+- added facility to read and write to devices on both I2C buses
 
 # 2.8.12 Beta 3 (2021-05-01)
 
