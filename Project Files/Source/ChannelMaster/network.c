@@ -1120,7 +1120,11 @@ int IOThreadStop() {
 	}
 	io_keep_running = 0;  // flag to stop
 
-	WaitForSingleObject(prn->hReadThreadMain, INFINITE);
+	if (WAIT_TIMEOUT == WaitForSingleObject(prn->hReadThreadMain, 1000))
+	{
+		// Thread has stopped, so let everybody know
+		IOThreadRunning = 0;
+	}
 
 	CloseHandle(prn->hReadThreadMain);
 	CloseHandle(prn->hReadThreadInitSem);
