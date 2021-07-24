@@ -1272,32 +1272,50 @@ void SetPttHang (int pttHang)
 }
 
 PORT
-void I2CReadInitiate(int bus, int address, int control)
+int I2CReadInitiate(int bus, int address, int control)
 {
-	prn->i2c.bus = bus;
-	prn->i2c.address = address;
-	prn->i2c.control = control;
+	int return_code = -1;
 
-	prn->i2c.i2c_control = 0;
-	prn->i2c.ctrl_read = 1;
-	prn->i2c.ctrl_stop = 1;
-	prn->i2c.ctrl_request = 1;
-	prn->i2c.ctrl_send = 1;
+	if (0 == prn->i2c.ctrl_send)
+	{
+		prn->i2c.bus = bus;
+		prn->i2c.address = address;
+		prn->i2c.control = control;
+
+		prn->i2c.i2c_control = 0;
+		prn->i2c.ctrl_read = 1;
+		prn->i2c.ctrl_stop = 1;
+		prn->i2c.ctrl_request = 1;
+		prn->i2c.ctrl_send = 1;
+
+		return_code = 0;
+	}
+
+	return return_code;
 }
 
 PORT
-void I2CWriteInitiate(int bus, int address, int control, int data)
+int I2CWriteInitiate(int bus, int address, int control, int data)
 {
-	prn->i2c.bus = bus;
-	prn->i2c.address = address;
-	prn->i2c.control = control;
-	prn->i2c.write_data = data;
+	int return_code = -1;
 
-	prn->i2c.i2c_control = 0;
-	prn->i2c.ctrl_read = 0;
-	prn->i2c.ctrl_stop = 1;
-	prn->i2c.ctrl_request = 1;
-	prn->i2c.ctrl_send = 1;
+	if (0 == prn->i2c.ctrl_send)
+	{
+		prn->i2c.bus = bus;
+		prn->i2c.address = address;
+		prn->i2c.control = control;
+		prn->i2c.write_data = data;
+
+		prn->i2c.i2c_control = 0;
+		prn->i2c.ctrl_read = 0;
+		prn->i2c.ctrl_stop = 1;
+		prn->i2c.ctrl_request = 1;
+		prn->i2c.ctrl_send = 1;
+
+		return_code = 0;
+	}
+
+	return return_code;
 }
 
 PORT

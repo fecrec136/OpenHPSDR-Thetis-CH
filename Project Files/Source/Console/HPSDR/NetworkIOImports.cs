@@ -343,10 +343,10 @@ namespace Thetis
         public static extern void SetResetOnDisconnect(int bit);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void I2CReadInitiate(int bus, int address, int control);
+        public static extern int I2CReadInitiate(int bus, int address, int control);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void I2CWriteInitiate(int bus, int address, int control, int data);
+        public static extern int I2CWriteInitiate(int bus, int address, int control, int data);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern int I2CResponse();
