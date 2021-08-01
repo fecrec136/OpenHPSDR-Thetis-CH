@@ -349,6 +349,9 @@ namespace Thetis
         public static extern int I2CWriteInitiate(int bus, int address, int control, int data);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int I2CWrite(int bus, int address, int control, int data);
+
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern int I2CResponse();
 
     }
