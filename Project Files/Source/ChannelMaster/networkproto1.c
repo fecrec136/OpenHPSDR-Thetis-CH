@@ -447,35 +447,51 @@ void WriteMainLoop(char* bufp)
         // so it is now sent at the same rate as everything else
 		C0 = (unsigned char)XmitBit;
 
-		if (prn->i2c.ctrl_send)
+		if (0 != prn->i2c.delay)
 		{
-			if (0 == prn->i2c.bus)
+			prn->i2c.delay--;
+		}
+
+		if ((prn->i2c.in_index != prn->i2c.out_index) &&
+		   ( 0 == prn->i2c.delay))
+		{
+			prn->i2c.delay = 5;
+
+			// The IN and OUT indexs are not the same, so there is data for transmission
+
+			unsigned char next = prn->i2c.out_index + 1 >= MAX_I2C_QUEUE ? 0 : prn->i2c.out_index + 1;
+
+			if (0 == prn->i2c.i2c_queue[next].bus)
 			{
-				C0 |= (0x3c<<1) | (prn->i2c.ctrl_request << 7);	//I2C1 0x3c
+				C0 |= (0x3c << 1) | (prn->i2c.ctrl_request << 7);    //I2C1 0x3c
 			}
 			else
 			{
-				C0 |= (0x3d<<1) | (prn->i2c.ctrl_request << 7);	//I2C2 0x3d
+				C0 |= (0x3d << 1) | (prn->i2c.ctrl_request << 7);    //I2C1 0x3c
 			}
 
-			unsigned char address = prn->i2c.address;
+			unsigned char address = prn->i2c.i2c_queue[next].address;
 
-			if (0x7f < prn->i2c.address) 
+			if (0x7f < address)
 			{
 				address = address >> 1;
 			}
-		        
-			C2 = (prn->i2c.ctrl_stop << 7) | address;
+
+			C2 = 0x80 | address; // Stop request
 
 			if (prn->i2c.ctrl_read)
-				C1 = 0x07; 
+			{
+				C1 = 0x07;
+			}
 			else
+			{
 				C1 = 0x06;
+			}
 
-			C3 = prn->i2c.control;
-			C4 = prn->i2c.write_data;
+			C3 = prn->i2c.i2c_queue[next].control;
+			C4 = prn->i2c.i2c_queue[next].write_data;
 
-			prn->i2c.ctrl_send = 0;
+			prn->i2c.out_index = next;
 		}
 		else
 		{
@@ -484,7 +500,7 @@ void WriteMainLoop(char* bufp)
 			case 0:						// C0=0: general settings
 				C1 = (SampleRateIn2Bits & 3);
 				C2 = (prn->cw.eer & 1) | ((prn->oc_output << 1) & 0xFE);
-				C3 = (prbpfilter->_10_dB_Atten & 1) | ((prbpfilter->_20_dB_Atten << 1) & 2) | 
+				C3 = (prbpfilter->_10_dB_Atten & 1) | ((prbpfilter->_20_dB_Atten << 1) & 2) |
 					((prn->rx[0].preamp << 2) & 0b00000100) | ((prn->adc[0].dither << 3) & 0b00001000) |
 					((prn->adc[0].random << 4) & 0b00010000) | ((prbpfilter->_Rx_1_Out << 7) & 0b10000000);
 				if (prbpfilter->_XVTR_Rx_In)
@@ -559,7 +575,7 @@ void WriteMainLoop(char* bufp)
 			case 5: //RX3 VFO (DDC2) 0x04
 				C0 |= 8;
 				// if Orion, DDC2 is RX2 frequency; else TX frequency for Hermes
-				if(nddc == 5)
+				if (nddc == 5)
 					ddc_freq = prn->rx[3].frequency;
 				else
 					ddc_freq = prn->tx[0].frequency;
@@ -630,7 +646,7 @@ void WriteMainLoop(char* bufp)
 					((prn->rx[2].preamp & 1) << 2) | ((prn->rx[0].preamp & 1) << 3) |
 					((prn->mic.mic_trs & 1) << 4) | ((prn->mic.mic_bias & 1) << 5) |
 					((prn->mic.mic_ptt & 1) << 6);
-				C2 = (prn->mic.line_in_gain & 0b00011111) | ((prn->puresignal_run & 1) << 6);				
+				C2 = (prn->mic.line_in_gain & 0b00011111) | ((prn->puresignal_run & 1) << 6);
 				C3 = prn->user_dig_out & 0b00001111;
 
 				if (prn->discovery.BoardType == HermesLite)
@@ -668,7 +684,7 @@ void WriteMainLoop(char* bufp)
 			case 13: // CW 0x0f
 				C0 |= 0x1e; //C0 0001 111x
 				C1 = prn->cw.cw_enable;
-				C2 = prn->cw.sidetone_level; 
+				C2 = prn->cw.sidetone_level;
 				C3 = prn->cw.rf_delay;
 				C4 = 0;
 				break;
@@ -715,6 +731,7 @@ void WriteMainLoop(char* bufp)
 				C3 = 0;
 				C4 = prn->reset_on_disconnect;
 				break;
+
 			}
 
 			if (out_control_idx < 18)				// ready for next USB frame

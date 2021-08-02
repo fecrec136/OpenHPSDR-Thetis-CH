@@ -37,6 +37,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MAX_SYNC_RX             (2)
 #define CACHE_ALIGN __declspec (align(16))
 
+#define MAX_I2C_QUEUE			(32)
+
 #define MAX_IN_SEQ_LOG			(40)
 #define MAX_IN_SEQ_SNAPSHOTS	(20)
 
@@ -109,22 +111,31 @@ typedef struct CACHE_ALIGN _radionet
 		{
 			unsigned char i2c_control;
 			struct {
-				unsigned char ctrl_send : 1, // bit 00
-							  ctrl_read : 1, // bit 01
-							  ctrl_stop : 1, // bit 02   
-						   ctrl_request : 1, // bit 03
-						     ctrl_error : 1, // bit 04
-					ctrl_read_available : 1, // bit 05
+				unsigned char ctrl_read : 1, // bit 00
+							  ctrl_stop : 1, // bit 01   
+						   ctrl_request : 1, // bit 02
+						     ctrl_error : 1, // bit 03
+					ctrl_read_available : 1, // bit 04
+					                    : 1, // bit 05
 					                    : 1, // bit 06
 					                    : 1; // bit 07
 			};
 		};
 #pragma pack(pop)
 
-		unsigned char bus;
-		unsigned char address;
-		unsigned char control;
-		unsigned char write_data;
+#pragma pack(push, 1)
+		struct {
+			unsigned char bus;
+			unsigned char address;
+			unsigned char control;
+			unsigned char write_data;
+		} i2c_queue[MAX_I2C_QUEUE];
+#pragma pack(pop)
+
+		unsigned char in_index;
+		unsigned char out_index;
+		unsigned char delay;
+
 		unsigned char returned_address;
 		unsigned char read_data[4];
 

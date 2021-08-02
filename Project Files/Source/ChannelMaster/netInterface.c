@@ -1276,17 +1276,25 @@ int I2CReadInitiate(int bus, int address, int control)
 {
 	int return_code = -1;
 
-	if (0 == prn->i2c.ctrl_send)
-	{
-		prn->i2c.bus = bus;
-		prn->i2c.address = address;
-		prn->i2c.control = control;
+	// Only read when a sequence of writes are not in progress
+	// This is true only when the IN and OUT indexs are the same
 
-		prn->i2c.i2c_control = 0;
+	if (prn->i2c.in_index == prn->i2c.out_index)
+	{
+		// Get the next free spot in the queue
+
+		unsigned char next = prn->i2c.in_index + 1 >= MAX_I2C_QUEUE ? 0 : prn->i2c.in_index + 1;
+
+		prn->i2c.i2c_queue[next].bus = bus;
+		prn->i2c.i2c_queue[next].address = address;
+		prn->i2c.i2c_queue[next].control = control;
+
+		prn->i2c.i2c_control = 0;	// Clear all the control bits
 		prn->i2c.ctrl_read = 1;
 		prn->i2c.ctrl_stop = 1;
 		prn->i2c.ctrl_request = 1;
-		prn->i2c.ctrl_send = 1;
+
+		prn->i2c.in_index = next;	// Move IN index on to strat the transmission
 
 		return_code = 0;
 	}
@@ -1299,20 +1307,30 @@ int I2CWriteInitiate(int bus, int address, int control, int data)
 {
 	int return_code = -1;
 
-	if (0 == prn->i2c.ctrl_send)
+	if (0 == prn->i2c.ctrl_read)
 	{
-		prn->i2c.bus = bus;
-		prn->i2c.address = address;
-		prn->i2c.control = control;
-		prn->i2c.write_data = data;
+		// Only proceed if read is not in progress
 
-		prn->i2c.i2c_control = 0;
-		prn->i2c.ctrl_read = 0;
-		prn->i2c.ctrl_stop = 1;
-		prn->i2c.ctrl_request = 1;
-		prn->i2c.ctrl_send = 1;
+		// Get the next index in the IN queue
+		unsigned char next = prn->i2c.in_index + 1 >= MAX_I2C_QUEUE ? 0 : prn->i2c.in_index + 1;
 
-		return_code = 0;
+		if (next != prn->i2c.out_index)
+		{
+			// Only proceed if the indexs are not the same, as that is the overflow condition
+
+			prn->i2c.i2c_queue[next].bus = bus;
+			prn->i2c.i2c_queue[next].address = address;
+			prn->i2c.i2c_queue[next].control = control;
+			prn->i2c.i2c_queue[next].write_data = data;
+
+			// We are expecting a response
+			prn->i2c.ctrl_request = 1;
+
+			// Move the index on to start the transmission
+			prn->i2c.in_index = next;
+
+			return_code = 0;
+		}
 	}
 
 	return return_code;
@@ -1323,20 +1341,27 @@ int I2CWrite(int bus, int address, int control, int data)
 {
 	int return_code = -1;
 
-	if (0 == prn->i2c.ctrl_send)
+	if (0 == prn->i2c.ctrl_read)
 	{
-		prn->i2c.bus = bus;
-		prn->i2c.address = address;
-		prn->i2c.control = control;
-		prn->i2c.write_data = data;
+		// Only proceed if read is not in progress
 
-		prn->i2c.i2c_control = 0;
-		prn->i2c.ctrl_read = 0;
-		prn->i2c.ctrl_stop = 1;
-		prn->i2c.ctrl_request = 0;
-		prn->i2c.ctrl_send = 1;
+		// Get the next index in the IN queue
+		unsigned char next = prn->i2c.in_index + 1 >= MAX_I2C_QUEUE ? 0 : prn->i2c.in_index + 1;
 
-		return_code = 0;
+		if (next != prn->i2c.out_index)
+		{
+			// Only proceed if the indexs are not the same, as that is the overflow condition
+
+			prn->i2c.i2c_queue[next].bus = bus;
+			prn->i2c.i2c_queue[next].address = address;
+			prn->i2c.i2c_queue[next].control = control;
+			prn->i2c.i2c_queue[next].write_data = data;
+
+			// Move the index on to start the transmission
+			prn->i2c.in_index = next;
+
+			return_code = 0;
+		}
 	}
 
 	return return_code;
@@ -1390,14 +1415,14 @@ void create_rnet()
 		prn->cc_seq_err = 0;
 
 		prn->i2c.i2c_control = 0;
-		prn->i2c.address = 0;
-		prn->i2c.control = 0;
-		prn->i2c.write_data = 0;
 		prn->i2c.returned_address = 0;
 		prn->i2c.read_data[0] = 0;
 		prn->i2c.read_data[1] = 0;
 		prn->i2c.read_data[2] = 0;
 		prn->i2c.read_data[3] = 0;
+		prn->i2c.in_index = 0;
+		prn->i2c.out_index = 0;
+		prn->i2c.delay = 0;
 
 		prn->cw.mode_control = 0;
 		prn->cw.sidetone_level = 0;
