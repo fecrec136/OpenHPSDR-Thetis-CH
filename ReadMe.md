@@ -1,6 +1,15 @@
 
-# Latest Release v2.8.12 Beta 4 May 08, 2021
+# Latest Release v2.8.12 Beta 5 August 05, 2021
 
+# 2.8.12 Beta 5 (2021-08-05)
+- Corrected problems with drive slider bar
+- Added timeout for read thread to stop lock-ups when disconnecting for HL2
+- Fixed missing tune signal in protocol when tuning
+- Updated I2C control to better handle fault conditions
+- Added control to allow 10 MHz reference input on CL1
+- Added controls to allow CL2 to output a given frequency
+- Updated calculations for power, PA current and signal strength to be more believable
+ 
 # 2.8.12 Beta 4 (2021-05-08)
 
 - added facility to read and write to devices on both I2C buses
