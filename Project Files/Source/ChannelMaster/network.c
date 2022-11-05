@@ -44,35 +44,39 @@ int rxreads_buf = 0;
 int rxreads_buf_after = 0;
 int rxreads_bf = 0;
 
+int WSA_inited = 0; //MW0LGE_22b moved here
+
 int initWSA(void) {
 	WSADATA data;
 	WORD wVersionRequested = 0x202;
 
 	if (WSAinitialized) {
-		WSACleanup();
+		if(WSA_inited) WSACleanup(); // MW0LGE_22b
 	}
 
-	WSAinitialized = 1;
+	//WSAinitialized = 1;//MW0LGE_22b
 	if (WSAStartup(wVersionRequested, &data) != 0) {
 		printf("Failed. Error Code : %d", WSAGetLastError());
 		return 1;
 	}
+	WSAinitialized = 1;
 
 	return 0;
 }
 
 u_long MetisAddr = 0;
 struct sockaddr_in MetisSockAddr;
-int WSA_inited = 0;
 struct fd_set readfds, writefds;
 
 PORT
 void DeInitMetisSockets() {
 	closesocket(listenSock);
 	listenSock = INVALID_SOCKET;
-	WSACleanup();
-	WSA_inited = 0;
-	WSAinitialized = 0;
+	if (WSA_inited) { // MW0LGE_22b
+		WSACleanup(); 
+		WSA_inited = 0;
+		WSAinitialized = 0;
+	}
 }
 
 /* returns 0 on success, != 0 otherwise */
@@ -88,23 +92,63 @@ int nativeInitMetis(char* netaddr, char* localaddr, int localport, int protocol)
 
 	RadioProtocol = protocol;
 
-	if (!WSA_inited) {
-		rc = initWSA();
-		if (rc != 0) {
-			return rc;
-		}
-		WSA_inited = 1;
-		printf("initWSA ok!\n");
-	}
+	//if (!WSA_inited) {
+	//	rc = initWSA();
+	//	if (rc != 0) {
+	//		return rc;
+	//	}
+	//	WSA_inited = 1;
+	//	printf("initWSA ok!\n");
+	//}
 
 	local.sin_port = htons((u_short)localport);
 	local.sin_family = AF_INET;
 	local.sin_addr.s_addr = inet_addr(localaddr);
 
-	if ((listenSock = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET) {
-		printf("createSocket Error: socket failed %ld\n", WSAGetLastError());
-		WSACleanup();
-		return INVALID_SOCKET;
+	//if ((listenSock = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET) {
+	//	printf("createSocket Error: socket failed %ld\n", WSAGetLastError());
+	//	WSACleanup();
+	//	return INVALID_SOCKET;
+	//}
+
+	//MW0LGE_22b
+	//winsock dll can already by initialised externally for this process
+	//for example, by .NET, so we do not always need to do it
+	//we can check this by the return from creating a socket()
+	//Likewise, we only want to wsacleanup if we wsastarted 
+
+	int initState = 1;
+	while (initState > 0)
+	{
+		listenSock = socket(AF_INET, SOCK_DGRAM, 0);
+
+		if (listenSock == (SOCKET)WSANOTINITIALISED) {
+			WSA_inited = 0;
+
+			if (initState == 2) // we alrady tried, and we are still not initialised
+			{
+				printf("socket() still returns wsa not initialised!\n");
+				return 1;
+			}		
+
+			rc = initWSA();
+			if (rc != 0) {
+				printf("initWSA failed rc!\n");
+				return rc;
+			}
+			initState = 2;
+			WSA_inited = 1;
+			printf("initWSA ok!\n");
+			///
+		}
+		else if (listenSock == INVALID_SOCKET) {
+			printf("createSocket Error: socket failed %ld\n", WSAGetLastError());
+			if(WSA_inited) WSACleanup(); //MW0LGE_22b
+			return INVALID_SOCKET;
+		}
+		else {
+			initState = 0;
+		}
 	}
 
 	// bind to the local address
@@ -187,7 +231,7 @@ int StartReadThread(void) {
 	return myrc;
 }
 
-void StopReadThread(void) {
+void StopReadThread() {
 	PrintTimeHack();
 	printf("- StopReadThread()\n");
 	fflush(stdout);
@@ -468,6 +512,7 @@ ReadThreadMainLoop() {
 					prn->ptt_in = prn->ReadBufp[0] & 0x1;
 					prn->dot_in = prn->ReadBufp[0] & 0x2;
 					prn->dash_in = prn->ReadBufp[0] & 0x4;
+					prn->pll_locked = prn->ReadBufp[0] & 0x10; //MW0LGE_21d
 
 					//Byte 1 - Bit [0] - ADC0  Overload 1 = active, 0 = inactive
 					//		   Bit [1] - ADC1  Overload 1 = active, 0 = inactive
@@ -743,7 +788,8 @@ void CmdHighPriority() { // port 1027
 	packetbuf[345] = prn->tx[0].drive_level;
 
 	// Enable transverter T/R relay 8   Mute Audio Amp bit 1 from J16 pin 9 IO4---DLE
-	packetbuf[1400] = xvtr_enable | ((!(prn->user_dig_in & 0x01)) << 1 | atu_tune << 2);
+	//packetbuf[1400] = xvtr_enable | ((!(prn->user_dig_in & 0x01)) << 1 | atu_tune << 2);
+	packetbuf[1400] = xvtr_enable | (!audioamp_enable) << 1 | atu_tune << 2; //MW0LGE_22b  // user_dig_in was gettin overritten by 1025 packet read
 
 	// Open Collector Outputs
 	packetbuf[1401] = (prn->oc_output << 1) & 0xfe;
@@ -1120,6 +1166,7 @@ int IOThreadStop() {
 	}
 	io_keep_running = 0;  // flag to stop
 
+	// MI0BOT: Thread locking up, so timeout added.
 	if (WAIT_TIMEOUT == WaitForSingleObject(prn->hReadThreadMain, 1000))
 	{
 		// Thread has stopped, so let everybody know

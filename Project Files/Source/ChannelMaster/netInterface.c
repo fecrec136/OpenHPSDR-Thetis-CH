@@ -191,32 +191,76 @@ int getSeqInDelta(int nInit, int rx, int deltas[], char* dateTimeStamp, int *rec
 }
 
 PORT
-int getUserI01() 
+int GetPLLLock()
 {
 
+	return (prn->pll_locked & 0x10) != 0;
+}
+//NOTE: these 4 user get fuctions are named for P1 //MW0LGE_22b
+// Bit [0] - User I/O (IO1) 1 = active, 0 = inactive
+// Bit [1] - User I/O (IO2) 1 = active, 0 = inactive
+// Bit [2] - User I/O (IO3) 1 = active, 0 = inactive
+// Bit [3] - User I/O (IO4) 1 = active, 0 = inactive
+PORT
+int getUserI01() 
+{
 	return (prn->user_dig_in & 0x1) != 0;
 }
 
 PORT
 int getUserI02() 
 {
-
 	return (prn->user_dig_in & 0x2) != 0;
 }
 
 PORT
 int getUserI03() 
 {
-
 	return (prn->user_dig_in & 0x4) != 0;
 }
 
 PORT
 int getUserI04() 
 {
-
 	return (prn->user_dig_in & 0x8) != 0;
 }
+//
+
+//NOTE: these 5 user get functions are named for P2 //MW0LGE_22b
+// Bit [0] - User I/O (IO4) 1 = active, 0 = inactive
+// Bit [1] - User I/O (IO5) 1 = active, 0 = inactive
+// Bit [2] - User I/O (IO6) 1 = active, 0 = inactive
+// Bit [3] - User I/O (IO8) 1 = active, 0 = inactive
+// Bit [4] - User I/O (IO2) 1 = active, 0 = inactive
+PORT
+int getUserI04_p2()
+{
+	return (prn->user_dig_in & 0x1) != 0;
+}
+
+PORT
+int getUserI05_p2()
+{
+	return (prn->user_dig_in & 0x2) != 0;
+}
+
+PORT
+int getUserI06_p2()
+{
+	return (prn->user_dig_in & 0x4) != 0;
+}
+
+PORT
+int getUserI08_p2()
+{
+	return (prn->user_dig_in & 0x8) != 0;
+}
+PORT
+int getUserI02_p2()
+{
+	return (prn->user_dig_in & 0x16) != 0;
+}
+//
 
 PORT
 int getExciterPower() 
@@ -659,7 +703,7 @@ void SetLineBoost(int bits)
 	}
 }
 
-PORT
+PORT // MI0BOT: Causes a HL2 to perform a reset on disconnect
 void SetResetOnDisconnect(int bit) 
 {
 	if (prn->reset_on_disconnect != bit)
@@ -941,6 +985,18 @@ void SetEERPWMmax(int max)
 	}
 }
 
+//MW0LGE_22b
+PORT
+void SetAudioAmpEnable(int enable)
+{
+	if (audioamp_enable != enable)
+	{
+		audioamp_enable = enable;
+		if (listenSock != INVALID_SOCKET && prn->sendHighPriority != 0)
+			CmdHighPriority();
+	}
+}
+
 // *************************************************
 // misc functions
 // *************************************************
@@ -1010,7 +1066,7 @@ void SetCWX(int bit)
 	}
 }
 
-PORT
+PORT // MI0BOT: On the HL2 the CWX protocol has been updated to pass PTT in Bit 3 
 void SetCWXPTT(int bit) 
 {
 	if (prn->tx[0].cwx_ptt != bit) 
@@ -1253,31 +1309,31 @@ void LRAudioSwap (int swap)
 		prn->lr_audio_swap = swap;
 }
 
-PORT
+PORT // MI0BOT: Board type is now discovered to allow different operations for the HL2
 void SetDiscoveryBoardType (int boardType)
 {
 	prn->discovery.BoardType = boardType;
 }
 
-PORT
+PORT // MI0BOT: Controls the delay for PTT to Tx power out for HL2
 void SetTxLatency (int txLatency)
 {
 	prn->tx[0].tx_latency = txLatency;
 }
 
-PORT
+PORT // MI0BOT: Determines the delay until Tx/Rx change over after Tx buffer empties for the HL2
 void SetPttHang (int pttHang)
 {
 	prn->tx[0].ptt_hang = pttHang;
 }
 
-PORT
+PORT // MI0BOT: Initialises for a read of the I2C on the HL2
 int I2CReadInitiate(int bus, int address, int control)
 {
 	int return_code = -1;
 
 	// Only read when a sequence of writes are not in progress
-	// This is true only when the IN and OUT indexs are the same
+	// This is true only when the IN and OUT indexes are the same
 
 	if (prn->i2c.in_index == prn->i2c.out_index)
 	{
@@ -1294,7 +1350,7 @@ int I2CReadInitiate(int bus, int address, int control)
 		prn->i2c.ctrl_stop = 1;
 		prn->i2c.ctrl_request = 1;
 
-		prn->i2c.in_index = next;	// Move IN index on to strat the transmission
+		prn->i2c.in_index = next;	// Move IN index on to start the transmission
 
 		return_code = 0;
 	}
@@ -1302,7 +1358,7 @@ int I2CReadInitiate(int bus, int address, int control)
 	return return_code;
 }
 
-PORT
+PORT // MI0BOT: Initialises for a write of the I2C on the HL2
 int I2CWriteInitiate(int bus, int address, int control, int data)
 {
 	int return_code = -1;
@@ -1336,7 +1392,7 @@ int I2CWriteInitiate(int bus, int address, int control, int data)
 	return return_code;
 }
 
-PORT
+PORT // MI0BOT: Write to the I2C on the HL2
 int I2CWrite(int bus, int address, int control, int data)
 {
 	int return_code = -1;
@@ -1367,7 +1423,7 @@ int I2CWrite(int bus, int address, int control, int data)
 	return return_code;
 }
 
-PORT
+PORT // MI0BOT: Handles the I2C responses for the HL2
 int I2CResponse()
 {
 	int return_code = 1;
@@ -1411,10 +1467,11 @@ void create_rnet()
 		prn->ptt_in = 0;
 		prn->dot_in = 0;
 		prn->dash_in = 0;
+		prn->pll_locked = 0; //MW0LGE_21d
 		prn->cc_seq_no = 0;
 		prn->cc_seq_err = 0;
 
-		prn->i2c.i2c_control = 0;
+		prn->i2c.i2c_control = 0;	// MI0BOT: HL2 I2C variables 
 		prn->i2c.returned_address = 0;
 		prn->i2c.read_data[0] = 0;
 		prn->i2c.read_data[1] = 0;
@@ -1490,7 +1547,7 @@ void create_rnet()
 			prn->tx[i].frequency = 0;
 			prn->tx[i].sampling_rate = 192;
 			prn->tx[i].cwx = 0;
-			prn->tx[i].cwx_ptt = 0;
+			prn->tx[i].cwx_ptt = 0;	// MI0BOT: HL2 control of PTT via CWX protocol
 			prn->tx[i].dash = 0;
 			prn->tx[i].dot = 0;
 			prn->tx[i].ptt_out = 0;
@@ -1499,8 +1556,8 @@ void create_rnet()
 			prn->tx[i].epwm_max = 0;
 			prn->tx[i].epwm_min = 0;
 			prn->tx[i].pa = 0;
-			prn->tx[i].tx_latency = 20;
-			prn->tx[i].ptt_hang = 12;
+			prn->tx[i].tx_latency = 20;	// MI0BOT: HL2 
+			prn->tx[i].ptt_hang = 12;	// MI0BOT: HL2 
 			prn->tx[i].mic_in_seq_no = 0;
 			prn->tx[i].mic_in_seq_err = 0;
 			prn->tx[i].mic_out_seq_no = 0;
@@ -1514,7 +1571,7 @@ void create_rnet()
 
 		prn->puresignal_run = 0;
 
-		prn->reset_on_disconnect = 0;	// MI0BOT: Intialise to not reset on software disconnect
+		prn->reset_on_disconnect = 0;	// MI0BOT: Intialised to not reset on software disconnect
 		
 		for (i = 0; i < 6; i++)
 			prn->discovery.MACAddr[i] = 0;

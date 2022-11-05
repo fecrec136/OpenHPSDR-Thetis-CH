@@ -28,12 +28,12 @@ int out_control_idx = 0;
 int MetisLastRecvSeq = 0;
 int PreviousTXBit = 0;							// used to detect TX/RX change
 unsigned int MetisOutBoundSeqNum;
-//PRO prop;
+PRO prop;
 
 int SendStartToMetis(void) {
 	int i;
 	int starting_seq;
-	//prop = create_pro(1, 1024, 16, 5);
+	prop = create_pro(1, 1024, 16, 5);
 	struct outdgram {
 		unsigned char packetbuf[64];
 	} outpacket;
@@ -95,7 +95,11 @@ int SendStopToMetis() {
 	if (MetisLastRecvSeq != starting_seq) {
 		return -1;
 	}
-	//destroy_pro (prop);
+	destroy_pro (prop);
+	prop = NULL; // MW0LGE_21g a change to ForceReset in setup.cs will cause calls to SendStopToMetis
+				 // even if it potentially does not have a matching StartMetis. Consequently
+				 // destroy_pro would fail. Destroy_pro does handle NULL state, so let us
+				 // just set prop to null here
 	return 0;
 }
 
@@ -179,7 +183,7 @@ int MetisReadDirect(unsigned char* bufp) {
 					printf("MRD: sync error on frame %d\n", seqnum);
 				}
 				memcpy(bufp, inpacket.readbuf + 8, 1024);
-				//xpro(prop, seqnum, bufp); // resequence out of order packets
+				xpro(prop, seqnum, bufp); // resequence out of order packets
 				if (seqnum != (1 + MetisLastRecvSeq)) {
 					SeqError += 1;
 				}
@@ -281,140 +285,148 @@ void MetisReadThreadMainLoop(void)
 
 	while (io_keep_running != 0)
 	{
-		WSAWaitForMultipleEvents(1, &prn->hDataEvent, FALSE, WSA_INFINITE, FALSE);
-		WSAEnumNetworkEvents(listenSock, prn->hDataEvent, &prn->wsaProcessEvents);
-		if (prn->wsaProcessEvents.lNetworkEvents & FD_READ)
+		//MW0LGE_21g WSAWaitForMultipleEvents(1, &prn->hDataEvent, FALSE, WSA_INFINITE, FALSE);
+		//added similar timout code from ReadThreadMainLoop
+		DWORD retVal = WSAWaitForMultipleEvents(1, &prn->hDataEvent, FALSE, prn->wdt ? 3000 : WSA_INFINITE, FALSE);
+		if ((retVal == WSA_WAIT_FAILED) || (retVal == WSA_WAIT_TIMEOUT))
 		{
-			if (prn->wsaProcessEvents.iErrorCode[FD_READ_BIT] != 0)
+			HaveSync = 0; //send console LOS		
+			destroy_pro(prop);
+			prop = NULL; // this needed bacause of a change to ForceReset in setup.cs
+			continue;
+		}
+		else 
+		{
+			WSAEnumNetworkEvents(listenSock, prn->hDataEvent, &prn->wsaProcessEvents);
+			if (prn->wsaProcessEvents.lNetworkEvents & FD_READ)
 			{
-				printf("FD_READ failed with error %d\n",
-					prn->wsaProcessEvents.iErrorCode[FD_READ_BIT]);
-				break;
-			}
-
-			MetisReadDirect(FPGAReadBufp);
-
-			{
-				int frame, cb, isamp;
-				int isample, iddc, spr;
-				unsigned char* bptr;
-				int mic_sample_count;
-				for (frame = 0; frame < 2; frame++)
+				if (prn->wsaProcessEvents.iErrorCode[FD_READ_BIT] != 0)
 				{
-					bptr = FPGAReadBufp + 512 * frame;
-					if ((bptr[0] == 0x7f) && (bptr[1] == 0x7f) && (bptr[2] == 0x7f))
+					printf("FD_READ failed with error %d\n",
+						prn->wsaProcessEvents.iErrorCode[FD_READ_BIT]);
+					break;
+				}
+
+				MetisReadDirect(FPGAReadBufp);
+
+				{
+					int frame, cb, isamp;
+					int isample, iddc, spr;
+					unsigned char* bptr;
+					int mic_sample_count;
+					for (frame = 0; frame < 2; frame++)
 					{
-						for (cb = 0; cb < 5; cb++)
-							ControlBytesIn[cb] = bptr[cb + 3];
-
-						if (ControlBytesIn[0] & 0x80)
+						bptr = FPGAReadBufp + 512 * frame;
+						if ((bptr[0] == 0x7f) && (bptr[1] == 0x7f) && (bptr[2] == 0x7f))
 						{
-							prn->i2c.returned_address = (ControlBytesIn[0] >> 1) & 0x3f;
+							for (cb = 0; cb < 5; cb++)
+								ControlBytesIn[cb] = bptr[cb + 3];
 
-							if (0x3f == prn->i2c.returned_address)
+							if (ControlBytesIn[0] & 0x80)
 							{
-								prn->i2c.ctrl_error = 1;
+								if (0x3f == prn->i2c.returned_address)
+								{
+									prn->i2c.ctrl_error = 1;
+								}
+								else
+								{
+									prn->i2c.read_data[0] = ControlBytesIn[1];
+									prn->i2c.read_data[1] = ControlBytesIn[2];
+									prn->i2c.read_data[2] = ControlBytesIn[3];
+									prn->i2c.read_data[3] = ControlBytesIn[4];
+
+									prn->i2c.ctrl_read_available = 1;
+								}
 							}
 							else
 							{
-								prn->i2c.read_data[0] = ControlBytesIn[1];
-								prn->i2c.read_data[1] = ControlBytesIn[2];
-								prn->i2c.read_data[2] = ControlBytesIn[3];
-								prn->i2c.read_data[3] = ControlBytesIn[4];
-
-								prn->i2c.ctrl_read_available = 1;
-							}
-						}
-						else
-						{
-							prn->ptt_in = ControlBytesIn[0] & 0x1;
-							prn->dash_in = (ControlBytesIn[0] << 1) & 0x1;
-							prn->dot_in = (ControlBytesIn[0] << 2) & 0x1;
-							switch (ControlBytesIn[0] & 0xf8)
-							{
-							case 0x00: // C0 0000 0000
-								prn->adc[0].adc_overload = ControlBytesIn[1] & 0x01;
-								prn->user_dig_in = ((ControlBytesIn[1] >> 1) & 0xf);						
-								break;
-							case 0x08: // C0 0000 1xxx
-								prn->tx[0].exciter_power = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // (AIN5) drive power
-								prn->tx[0].fwd_power = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // (AIN1) PA coupler
-								PeakFwdPower((float)(prn->tx[0].fwd_power));
-								break;
-							case 0x10: // C0 0001 0xxx
-								prn->tx[0].rev_power = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // (AIN2) PA reverse power
-								PeakRevPower((float)(prn->tx[0].rev_power));
-								prn->user_adc0 = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // AIN3 MKII PA Volts
-								break;
-							case 0x18: // C0 0001 1xxx
-								prn->user_adc1 = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // AIN4 MKII PA Amps						
-								prn->supply_volts = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // AIN6 Hermes Volts                                                              
-								break;
-							case 0x20: // C0 0010 0xxx
-								prn->adc[0].adc_overload = ControlBytesIn[1] & 1;
-								prn->adc[1].adc_overload = (ControlBytesIn[2] & 1) << 1;
-								prn->adc[2].adc_overload = (ControlBytesIn[3] & 1) << 2;
-								break;
-							}
-						}
-
-						spr = 504 / (6 * nddc + 2);											// samples per ddc
-						for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
-						{
-							for (isample = 0; isample < spr; isample++)
-							{
-								int k = 8 + isample * (6 * nddc + 2) + iddc * 6;
-								prn->RxBuff[iddc][2 * isample + 0] = const_1_div_2147483648_*
-									(double)(bptr[k + 0] << 24 |
-										bptr[k + 1] << 16 |
-										bptr[k + 2] << 8);
-								prn->RxBuff[iddc][2 * isample + 1] = const_1_div_2147483648_ *
-									(double)(bptr[k + 3] << 24 |
-										bptr[k + 4] << 16 |
-										bptr[k + 5] << 8);
-							}
-						}
-						switch (nddc)
-							{
+								prn->ptt_in = ControlBytesIn[0] & 0x1;
+								prn->dash_in = (ControlBytesIn[0] << 1) & 0x1;
+								prn->dot_in = (ControlBytesIn[0] << 2) & 0x1;
+								switch (ControlBytesIn[0] & 0xf8)
+								{
+								case 0x00: // C0 0000 0000
+									prn->adc[0].adc_overload = ControlBytesIn[1] & 0x01;
+									prn->user_dig_in = ((ControlBytesIn[1] >> 1) & 0xf);
+									break;
+								case 0x08: // C0 0000 1xxx
+									prn->tx[0].exciter_power = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // (AIN5) drive power
+									prn->tx[0].fwd_power = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // (AIN1) PA coupler
+									PeakFwdPower((float)(prn->tx[0].fwd_power));
+									break;
+								case 0x10: // C0 0001 0xxx
+									prn->tx[0].rev_power = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // (AIN2) PA reverse power
+									PeakRevPower((float)(prn->tx[0].rev_power));
+									prn->user_adc0 = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // AIN3 MKII PA Volts
+									break;
+								case 0x18: // C0 0001 1xxx
+									prn->user_adc1 = ((ControlBytesIn[1] << 8) & 0xff00) | (((int)(ControlBytesIn[2])) & 0xff); // AIN4 MKII PA Amps						
+									prn->supply_volts = ((ControlBytesIn[3] << 8) & 0xff00) | (((int)(ControlBytesIn[4])) & 0xff); // AIN6 Hermes Volts                                                              
+									break;
+								case 0x20: // C0 0010 0xxx
+									prn->adc[0].adc_overload = ControlBytesIn[1] & 1;
+									prn->adc[1].adc_overload = (ControlBytesIn[2] & 1) << 1;
+									prn->adc[2].adc_overload = (ControlBytesIn[3] & 1) << 2;
+									break;
+								}
+								spr = 504 / (6 * nddc + 2);											// samples per ddc
+								for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
+								{
+									for (isample = 0; isample < spr; isample++)
+									{
+										int k = 8 + isample * (6 * nddc + 2) + iddc * 6;
+										prn->RxBuff[iddc][2 * isample + 0] = const_1_div_2147483648_ *
+											(double)(bptr[k + 0] << 24 |
+												bptr[k + 1] << 16 |
+												bptr[k + 2] << 8);
+										prn->RxBuff[iddc][2 * isample + 1] = const_1_div_2147483648_ *
+											(double)(bptr[k + 3] << 24 |
+												bptr[k + 4] << 16 |
+												bptr[k + 5] << 8);
+									}
+								}
+								switch (nddc)
+								{
 								case 2:
 									twist(spr, 0, 1, 1035);
 									break;
 								case 4:
-									xrouter (0, 0, 1035, spr, prn->RxBuff[0]);
-									twist (spr, 2, 3, 1036);
-									xrouter (0, 0, 1037, spr, prn->RxBuff[1]);
+									xrouter(0, 0, 1035, spr, prn->RxBuff[0]);
+									twist(spr, 2, 3, 1036);
+									xrouter(0, 0, 1037, spr, prn->RxBuff[1]);
 									break;
 								case 5:
-									twist (spr, 0, 1, 1035);
-									twist (spr, 3, 4, 1036);
-									xrouter (0, 0, 1037, spr, prn->RxBuff[2]);
+									twist(spr, 0, 1, 1035);
+									twist(spr, 3, 4, 1036);
+									xrouter(0, 0, 1037, spr, prn->RxBuff[2]);
 									break;
 								}
-						mic_sample_count = 0;
+								mic_sample_count = 0;
 
-						for (isamp = 0; isamp < spr; isamp++)							// for each set of samples
-						{
-							int k = 8 + nddc * 6 + isamp * (2 + nddc * 6);
+								for (isamp = 0; isamp < spr; isamp++)							// for each set of samples
+								{
+									int k = 8 + nddc * 6 + isamp * (2 + nddc * 6);
 
-							mic_decimation_count++;
-							if (mic_decimation_count == mic_decimation_factor)
-							{
-								mic_decimation_count = 0;
-								prn->TxReadBufp[2 * mic_sample_count + 0] = const_1_div_2147483648_ *
-									(double)(bptr[k + 0] << 24 |
-										bptr[k + 1] << 16);
-								prn->TxReadBufp[2 * mic_sample_count + 1] = 0.0;
+									mic_decimation_count++;
+									if (mic_decimation_count == mic_decimation_factor)
+									{
+										mic_decimation_count = 0;
+										prn->TxReadBufp[2 * mic_sample_count + 0] = const_1_div_2147483648_ *
+											(double)(bptr[k + 0] << 24 |
+												bptr[k + 1] << 16);
+										prn->TxReadBufp[2 * mic_sample_count + 1] = 0.0;
 
-								mic_sample_count++;
+										mic_sample_count++;
+									}
+								}
+
+								Inbound(inid(1, 0), mic_sample_count, prn->TxReadBufp);
 							}
 						}
-
-						Inbound(inid(1, 0), mic_sample_count, prn->TxReadBufp);
 					}
 				}
 			}
 		}
-
 	}
 }
 
@@ -500,7 +512,7 @@ void WriteMainLoop(char* bufp)
 			case 0:						// C0=0: general settings
 				C1 = (SampleRateIn2Bits & 3);
 				C2 = (prn->cw.eer & 1) | ((prn->oc_output << 1) & 0xFE);
-				C3 = (prbpfilter->_10_dB_Atten & 1) | ((prbpfilter->_20_dB_Atten << 1) & 2) |
+				C3 = (prbpfilter->_10_dB_Atten & 1) | ((prbpfilter->_20_dB_Atten << 1) & 2) | 
 					((prn->rx[0].preamp << 2) & 0b00000100) | ((prn->adc[0].dither << 3) & 0b00001000) |
 					((prn->adc[0].random << 4) & 0b00010000) | ((prbpfilter->_Rx_1_Out << 7) & 0b10000000);
 				if (prbpfilter->_XVTR_Rx_In)
@@ -679,7 +691,7 @@ void WriteMainLoop(char* bufp)
 				C4 = (prn->cw.keyer_weight & 0b01111111) | ((prn->cw.strict_spacing) << 7);
 				break;
 
-				// 0x18, 1A are reserved
+			// 0x18, 1A are reserved
 
 			case 13: // CW 0x0f
 				C0 |= 0x1e; //C0 0001 111x

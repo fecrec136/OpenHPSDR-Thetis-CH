@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MAX_SYNC_RX             (2)
 #define CACHE_ALIGN __declspec (align(16))
 
+// MI0BOT: For I2C use on HL2
 #define MAX_I2C_QUEUE			(32)
 
 #define MAX_IN_SEQ_LOG			(40)
@@ -71,6 +72,7 @@ typedef struct CACHE_ALIGN _radionet
 	int ptt_in;
 	int dot_in;
 	int dash_in;
+	int pll_locked;
 	int oc_output;
 	int supply_volts;
 	int user_adc0;
@@ -104,7 +106,7 @@ typedef struct CACHE_ALIGN _radionet
 	int hardware_LEDs;
 	int reset_on_disconnect;	// MI0BOT: Reset on software disconnect
 
-	struct _i2c
+	struct _i2c	// MI0BOT: I2C data structure for HL2
 	{
 #pragma pack(push, 1)
 		union
@@ -248,7 +250,7 @@ typedef struct CACHE_ALIGN _radionet
 		int frequency;
 		int sampling_rate;
 		int cwx;
-		int cwx_ptt;
+		int cwx_ptt;	// MI0BOT: CWX enhancement for PTT on HL2
 		int dash;
 		int dot;
 		int ptt_out;
@@ -402,6 +404,7 @@ int ADC_cntrl2;
 int nreceivers;
 int xvtr_enable;
 int atu_tune; // controls J16 pin 10 on Orion MKII board
+int audioamp_enable; // constrol audio amp on ?? board //MW0LGE_22b
 int AlexHPFMask;
 int AlexLPFMask;
 int AlexTRRelay;
@@ -444,7 +447,7 @@ enum HPSDRHW
 	Angelia = 3,  // ANAN-100D
 	Orion = 4,    // ANAN-200D
 	OrionMKII = 5, // ANAN-7000DLE/8000DLE
-	HermesLite = 6 
+	HermesLite = 6 // MI0BOT: HL2 allocated number
 };
 
 enum _RadioProtocol
