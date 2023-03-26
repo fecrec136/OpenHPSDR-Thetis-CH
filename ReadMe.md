@@ -1,4 +1,8 @@
-# Latest Release v2.9.0.6 Beta 2 January 27, 2023
+# Latest Release v2.9.0.6 March 27, 2023
+
+# 2.9.0.6 (2023-03-27)
+- Provided link to new releases after beta timeout
+- Updated not to read Mic gain if digital
 
 # 2.9.0.6 Beta 2 (2023-01-27)
 - Updated CAT handling for VFO B option to work better with Omni Rig
