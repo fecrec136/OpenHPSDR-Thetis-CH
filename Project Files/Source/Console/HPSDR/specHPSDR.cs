@@ -28,7 +28,7 @@ namespace Thetis
     public class SpecRX
     {
         private const int NUM_RX_DISP = 8;
-        private SpecHPSDR[] spec_rx;
+        private SpecHPSDR[] spec_rx;        
 
         public SpecRX()
         {
