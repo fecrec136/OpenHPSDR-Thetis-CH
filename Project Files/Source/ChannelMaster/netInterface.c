@@ -1358,7 +1358,7 @@ int I2CReadInitiate(int bus, int address, int control)
 	return return_code;
 }
 
-PORT // MI0BOT: Initialises for a write of the I2C on the HL2
+PORT // MI0BOT: Initialises for a write of the I2C on the HL2 where a return is expected
 int I2CWriteInitiate(int bus, int address, int control, int data)
 {
 	int return_code = -1;
@@ -1392,7 +1392,7 @@ int I2CWriteInitiate(int bus, int address, int control, int data)
 	return return_code;
 }
 
-PORT // MI0BOT: Write to the I2C on the HL2
+PORT // MI0BOT: Write to the I2C on the HL2 when a return is not expected
 int I2CWrite(int bus, int address, int control, int data)
 {
 	int return_code = -1;
@@ -1424,7 +1424,7 @@ int I2CWrite(int bus, int address, int control, int data)
 }
 
 PORT // MI0BOT: Handles the I2C responses for the HL2
-int I2CResponse()
+int I2CResponse(unsigned char* read_data)
 {
 	int return_code = 1;
 
@@ -1436,7 +1436,12 @@ int I2CResponse()
 	{
 		prn->i2c.i2c_control = 0;
 
-		return_code = (prn->i2c.read_data[2] << 8) | prn->i2c.read_data[3];
+		read_data[0] = prn->i2c.read_data[0];
+		read_data[1] = prn->i2c.read_data[1];
+		read_data[2] = prn->i2c.read_data[2];
+		read_data[3] = prn->i2c.read_data[3];
+
+		return_code = 0;
 	}
 
 	return return_code;
