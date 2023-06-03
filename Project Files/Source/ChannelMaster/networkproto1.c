@@ -466,7 +466,6 @@ void WriteMainLoop(char* bufp)
 		}
 
 		if ((0 == prn->i2c.delay) &&
-			(0 == XmitBit) &&
 		    (prn->i2c.in_index != prn->i2c.out_index))
 		{
 			prn->i2c.delay = 5;
