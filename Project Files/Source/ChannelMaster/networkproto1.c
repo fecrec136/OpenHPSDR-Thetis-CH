@@ -480,7 +480,7 @@ void WriteMainLoop(char* bufp)
 			}
 			else
 			{
-				C0 |= (0x3d << 1) | (prn->i2c.ctrl_request << 7);    //I2C1 0x3c
+				C0 |= (0x3d << 1) | (prn->i2c.ctrl_request << 7);    //I2C1 0x3d
 			}
 
 			unsigned char address = prn->i2c.i2c_queue[next].address;
