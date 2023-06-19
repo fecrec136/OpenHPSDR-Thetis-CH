@@ -369,60 +369,61 @@ void MetisReadThreadMainLoop(void)
 									prn->adc[2].adc_overload = (ControlBytesIn[3] & 1) << 2;
 									break;
 								}
-								spr = 504 / (6 * nddc + 2);											// samples per ddc
-								for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
-								{
-									for (isample = 0; isample < spr; isample++)
-									{
-										int k = 8 + isample * (6 * nddc + 2) + iddc * 6;
-										prn->RxBuff[iddc][2 * isample + 0] = const_1_div_2147483648_ *
-											(double)(bptr[k + 0] << 24 |
-												bptr[k + 1] << 16 |
-												bptr[k + 2] << 8);
-										prn->RxBuff[iddc][2 * isample + 1] = const_1_div_2147483648_ *
-											(double)(bptr[k + 3] << 24 |
-												bptr[k + 4] << 16 |
-												bptr[k + 5] << 8);
-									}
-								}
-							// WriteAudio(30.0, 48000, spr, prn->RxBuff[0], 3);
-								switch (nddc)
-								{
-								case 2:
-									twist(spr, 0, 1, 1035);
-									break;
-								case 4:
-									xrouter(0, 0, 1035, spr, prn->RxBuff[0]);
-									twist(spr, 2, 3, 1036);
-									xrouter(0, 0, 1037, spr, prn->RxBuff[1]);
-									break;
-								case 5:
-									twist(spr, 0, 1, 1035);
-									twist(spr, 3, 4, 1036);
-									xrouter(0, 0, 1037, spr, prn->RxBuff[2]);
-									break;
-								}
-								mic_sample_count = 0;
-
-								for (isamp = 0; isamp < spr; isamp++)							// for each set of samples
-								{
-									int k = 8 + nddc * 6 + isamp * (2 + nddc * 6);
-
-									mic_decimation_count++;
-									if (mic_decimation_count == mic_decimation_factor)
-									{
-										mic_decimation_count = 0;
-										prn->TxReadBufp[2 * mic_sample_count + 0] = const_1_div_2147483648_ *
-											(double)(bptr[k + 0] << 24 |
-												bptr[k + 1] << 16);
-										prn->TxReadBufp[2 * mic_sample_count + 1] = 0.0;
-
-										mic_sample_count++;
-									}
-								}
-
-								Inbound(inid(1, 0), mic_sample_count, prn->TxReadBufp);
 							}
+
+							spr = 504 / (6 * nddc + 2);											// samples per ddc
+							for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
+							{
+								for (isample = 0; isample < spr; isample++)
+								{
+									int k = 8 + isample * (6 * nddc + 2) + iddc * 6;
+									prn->RxBuff[iddc][2 * isample + 0] = const_1_div_2147483648_ *
+										(double)(bptr[k + 0] << 24 |
+											bptr[k + 1] << 16 |
+											bptr[k + 2] << 8);
+									prn->RxBuff[iddc][2 * isample + 1] = const_1_div_2147483648_ *
+										(double)(bptr[k + 3] << 24 |
+											bptr[k + 4] << 16 |
+											bptr[k + 5] << 8);
+								}
+							}
+						// WriteAudio(30.0, 48000, spr, prn->RxBuff[0], 3);
+							switch (nddc)
+							{
+							case 2:
+								twist(spr, 0, 1, 1035);
+								break;
+							case 4:
+								xrouter(0, 0, 1035, spr, prn->RxBuff[0]);
+								twist(spr, 2, 3, 1036);
+								xrouter(0, 0, 1037, spr, prn->RxBuff[1]);
+								break;
+							case 5:
+								twist(spr, 0, 1, 1035);
+								twist(spr, 3, 4, 1036);
+								xrouter(0, 0, 1037, spr, prn->RxBuff[2]);
+								break;
+							}
+							mic_sample_count = 0;
+
+							for (isamp = 0; isamp < spr; isamp++)							// for each set of samples
+							{
+								int k = 8 + nddc * 6 + isamp * (2 + nddc * 6);
+
+								mic_decimation_count++;
+								if (mic_decimation_count == mic_decimation_factor)
+								{
+									mic_decimation_count = 0;
+									prn->TxReadBufp[2 * mic_sample_count + 0] = const_1_div_2147483648_ *
+										(double)(bptr[k + 0] << 24 |
+											bptr[k + 1] << 16);
+									prn->TxReadBufp[2 * mic_sample_count + 1] = 0.0;
+
+									mic_sample_count++;
+								}
+							}
+
+							Inbound(inid(1, 0), mic_sample_count, prn->TxReadBufp);
 						}
 					}
 				}
