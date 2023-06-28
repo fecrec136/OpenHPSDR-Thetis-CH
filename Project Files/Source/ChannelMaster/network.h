@@ -136,7 +136,7 @@ typedef struct CACHE_ALIGN _radionet
 
 		unsigned char in_index;
 		unsigned char out_index;
-		unsigned char delay;
+		  signed char delay;
 
 		unsigned char returned_address;
 		unsigned char read_data[4];

@@ -461,12 +461,12 @@ void WriteMainLoop(char* bufp)
         // so it is now sent at the same rate as everything else
 		C0 = (unsigned char)XmitBit;
 
-		if (0 != prn->i2c.delay)
-		{
-			prn->i2c.delay--;
-		}
+		//if (0 != prn->i2c.delay)
+		//{
+		//	prn->i2c.delay--;
+		//}
 
-		if ((0 == prn->i2c.delay) &&
+		if ((0 >= --prn->i2c.delay) &&
 		    (prn->i2c.in_index != prn->i2c.out_index))
 		{
 			prn->i2c.delay = 5;
