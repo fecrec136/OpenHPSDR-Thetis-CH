@@ -355,11 +355,12 @@
     {
         Atlas = 0,
         Hermes = 1,
-        HermesII = 2, // ANAN-10E ANAN-100B HeremesII
-        Angelia = 3,  // ANAN-100D
-        Orion = 4,    // ANAN-200D
+        HermesII = 2,  // ANAN-10E ANAN-100B HeremesII
+        Angelia = 3,   // ANAN-100D
+        Orion = 4,     // ANAN-200D
         OrionMKII = 5, // AMAM-7000DLE 7000DLEMkII ANAN-8000DLE OrionMkII
-        HermesLite = 6
+        HermesLite = 6,
+        Saturn = 10
     }
 
     public enum DSPFilterType
@@ -421,6 +422,13 @@
         DRIVE_SLIDER = 0,
         TUNE_SLIDER = 1,
         FIXED = 2
+    }
+
+    public enum SquelchState
+    {
+        OFF = 0,
+        SQL = 1,
+        VSQL = 2
     }
     #endregion
 }
