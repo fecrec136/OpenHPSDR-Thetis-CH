@@ -171,11 +171,20 @@ namespace Thetis
                 }
                 else
                 {
-                    if (tx && VFOBTX)
-                        bits = TXABitMasks[idxb];
-                    else if (tx)
-                        bits = TXABitMasks[idx];
-                    else bits = RXABitMasks[idx];
+                    if (tx)
+                    {
+                        if (VFOBTX)
+                            bits = TXABitMasks[idxb];
+                        else
+                            bits = TXABitMasks[idx];
+                    }
+                    else
+                    {
+                        if (idxb > idx)     // MI0BOT: Select the filter for the high band 
+                            bits = RXABitMasks[idxb];
+                        else
+                            bits = RXABitMasks[idx];
+                    }
                 }
 			}
 
