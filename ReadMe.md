@@ -1,4 +1,9 @@
-# Latest Release v2.9.0.8 Beta 2 July 13, 2023
+# Latest Release v2.9.0.8 Beta 3 July 20, 2023
+
+# 2.9.0.8 Beta 3 (2023-07-20)
+- Added support for I/O Board
+- Update PS to trigger with negative attenuator values
+- Updated static IP address discovery to retry 5 times before going to broadcast address
 
 # 2.9.0.8 Beta 2 (2023-07-13)
 - Updated Pure Signal to use full range of HL2 LNA
