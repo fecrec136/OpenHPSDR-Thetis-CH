@@ -180,7 +180,7 @@ namespace Thetis
                     }
                     else
                     {
-                        if (idxb > idx)     // MI0BOT: Select the filter for the high band 
+                        if (Console.getConsole().RX2Enabled && (idxb > idx))     // MI0BOT: Select the filter for the high band 
                             bits = RXABitMasks[idxb];
                         else
                             bits = RXABitMasks[idx];
