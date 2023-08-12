@@ -424,6 +424,7 @@ int ApolloATU;
 
 int WSAinitialized;
 SOCKET listenSock;
+int RemotePort;		// MI0BOT: Allows different remote port for WAN access
 SYSTEMTIME lt;
 static const double const_1_div_2147483648_ = 1.0 / 2147483648.0;
 

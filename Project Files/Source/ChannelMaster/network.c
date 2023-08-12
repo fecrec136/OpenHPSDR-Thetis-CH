@@ -79,9 +79,9 @@ void DeInitMetisSockets() {
 	}
 }
 
-/* returns 0 on success, != 0 otherwise */
+/* returns 0 on success, != 0 otherwise */	// MI0BOT: Added remotePort to allow remote access to several HL2s by different port number
 PORT
-int nativeInitMetis(char* netaddr, char* localaddr, int localport, int protocol) {
+int nativeInitMetis(char* netaddr, char* localaddr, int localport, int protocol, int remotePort) {
 	IPAddr DestIp = 0;
 	IPAddr SrcIp = 0;       /* default for src ip */
 	ULONG MacAddr[2];       /* for 6-byte hardware addresses */
@@ -166,6 +166,8 @@ int nativeInitMetis(char* netaddr, char* localaddr, int localport, int protocol)
 	if (DestIp != 0) {
 		printf("destination addr: 0x%08x\n", DestIp);
 		fflush(stdout);
+
+		RemotePort = remotePort;	// Mi0BOT: Remote acces over WAN using different port
 
 		//add to ARP table
 		memset(&MacAddr, 0xff, sizeof(MacAddr));
@@ -681,7 +683,7 @@ void CmdGeneral() { // port 1024
 	// sendto port 1024
 	if (listenSock != INVALID_SOCKET &&
 		RadioProtocol == ETH)
-		sendPacket(listenSock, packetbuf, sizeof(packetbuf), 1024);
+		sendPacket(listenSock, packetbuf, sizeof(packetbuf), RemotePort);
 }
 
 void CmdHighPriority() { // port 1027

@@ -52,7 +52,7 @@ int SendStartToMetis(void) {
 	starting_seq = MetisLastRecvSeq;
 	for (i = 0; i < 5; i++) {
 		ForceCandCFrame(1);
-		sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), 1024);
+		sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), RemotePort);
 		MetisReadDirect((unsigned char*)&inpacket);
 		if (MetisLastRecvSeq != starting_seq) {
 			break;
@@ -86,7 +86,7 @@ int SendStopToMetis() {
 
 	starting_seq = MetisLastRecvSeq;
 	for (i = 0; i < 5; i++) {
-		sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), 1024);
+		sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), RemotePort);
 		Sleep(10);
 		if (MetisLastRecvSeq == starting_seq) {
 			break;
@@ -227,7 +227,7 @@ int MetisWriteFrame(int endpoint, char* bufp) {
 	++MetisOutBoundSeqNum;
 	memcpy(outpacket.framebuf + 8, bufp, 1024);
 
-	result = sendPacket(listenSock, (char*)&outpacket, 1024 + 8, 1024);
+	result = sendPacket(listenSock, (char*)&outpacket, 1024 + 8, RemotePort);
 	result -= 8;
 	return result;
 }
