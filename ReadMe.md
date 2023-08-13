@@ -1,4 +1,7 @@
-# Latest Release v2.9.0.8 Beta 4 5 August 20, 2023
+# Latest Release v2.9.0.8 Beta 5 13 August 20, 2023
+
+# 2.9.0.8 Beta 5 (2023-08-13)
+- Added ability to access HL2 over a WAN connection.
 
 # 2.9.0.8 Beta 4 (2023-08-05)
 - Corrected audio mixing issue
