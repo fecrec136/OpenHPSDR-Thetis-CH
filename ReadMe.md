@@ -1,4 +1,8 @@
-# Latest Release v2.9.0.8 Beta 6 3 September, 2023
+# Latest Release v2.9.0.8 28 September, 2023
+
+# 2.9.0.8 (2023-09-28)
+- Corrected display of MAC address
+- Corrected issue running on Korean/Japanese Windows
 
 # 2.9.0.8 Beta 6 (2023-09-3)
 - Added ability to name static IP in title bar via multi-line Custom Title Box
