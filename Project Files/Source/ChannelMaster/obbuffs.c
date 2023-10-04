@@ -76,6 +76,7 @@ void destroy_obbuffs (int id)
 	InterlockedBitTestAndReset(&a->run, 0);
 	ReleaseSemaphore(a->Sem_BuffReady, 1, 0);
 	LeaveCriticalSection (&a->csOUT);
+	LeaveCriticalSection (&a->csIN);
 	Sleep (5);
 	DeleteCriticalSection (&a->csOUT);
 	DeleteCriticalSection (&a->csIN);
