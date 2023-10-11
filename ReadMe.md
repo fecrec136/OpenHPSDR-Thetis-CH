@@ -1,4 +1,7 @@
-# Latest Release v2.10.0.0 Beta 2 7th October, 2023
+# Latest Release v2.10.0.0  11th October, 2023
+
+# 2.10.0.0 (2023-10-11)
+- Formal release without timeout.
 
 # 2.10.0.0 Beta 2 (2023-10-07)
 - Updated tune slider to give more control at lower power settings.
