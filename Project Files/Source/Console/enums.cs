@@ -326,6 +326,7 @@
         CAT,
         VOX,
         SPACE,
+        TCI,
         LAST,
     }
 
