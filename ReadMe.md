@@ -1,4 +1,8 @@
-# Latest Release v2.10.0.0  11th October, 2023
+# Latest Release v2.10.1.0  21st October, 2023
+
+# 2.10.1.0 (2023-10-11)
+- Updated codebase to reflect changes added to official Thetis.
+- Update frequency interface to latest I/O Board standard.
 
 # 2.10.0.0 (2023-10-11)
 - Formal release without timeout.
