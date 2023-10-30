@@ -77,7 +77,7 @@ void destroy_obbuffs (int id)
 	ReleaseSemaphore(a->Sem_BuffReady, 1, 0);
 	LeaveCriticalSection (&a->csOUT);
 	LeaveCriticalSection (&a->csIN);
-	Sleep (5);
+	Sleep (50);
 	DeleteCriticalSection (&a->csOUT);
 	DeleteCriticalSection (&a->csIN);
 	CloseHandle (a->Sem_BuffReady);
@@ -153,6 +153,9 @@ void obdata (int id, double* out)
 
 void ob_main (void *pargs)
 {
+	const wchar_t* threadName = L"ob_main Thread";
+	SetThreadDescription(GetCurrentThread(), threadName);
+
 	DWORD taskIndex = 0;
 	HANDLE hTask = AvSetMmThreadCharacteristics(TEXT("Pro Audio"), &taskIndex);
 	if (hTask != 0) AvSetMmThreadPriority(hTask, 2);
