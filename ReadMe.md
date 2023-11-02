@@ -1,7 +1,10 @@
-# Latest Release v2.10.2.2 Beta 2 28nd October, 2023
+# Latest Release v2.10.2.2 2nd November, 2023
+
+# 2.10.2.2 (2023-11-02)
+- Formal release
 
 # 2.10.2.2 Beta 2 (2023-10-28)
-- Enable tuner option on Protocol 1.
+- Enabled tuner option on Protocol 1.
 - Fixed alternate receive aerial not being saved over shutdown. 
 
 # 2.10.2.2 Beta 1 (2023-10-22)
