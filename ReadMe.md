@@ -1,4 +1,8 @@
-# Latest Release v2.10.3.3 13th November, 2023
+# Latest Release v2.10.3.4 Beta 1 19th November, 2023
+
+# 2.10.3.4 Beta 1 (2023-11-03)
+- Added support for ATU tuning by holding control (Ctrl) while clicking Tune.
+- Fixed issue were tune flag was not set in protocol 1.
 
 # 2.10.3.3 (2023-11-03)
 - Formal release.
