@@ -1,4 +1,10 @@
-# Latest Release v2.10.3.4 Beta 2 30th November, 2023
+# Latest Release v2.10.3.4 Beta 3 7th January, 2024
+
+# 2.10.3.4 Beta 3 (2024-01-07)
+- Fixed Minor UI updates for better skin alignment.
+- Fixed Tune/Drive slider limits.
+- Added Gateware patch version to title and setup display.
+- Added support for register 32 for I/O Board giving current mode.
 
 # 2.10.3.4 Beta 2 (2023-11-30)
 -  Added extra support for ATU tuning. This is for use with the I/O Board. Thetis now reports returned errors and the power for an ATU can be controlled via the fixed drive setting.
