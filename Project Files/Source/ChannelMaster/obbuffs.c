@@ -76,8 +76,7 @@ void destroy_obbuffs (int id)
 	InterlockedBitTestAndReset(&a->run, 0);
 	ReleaseSemaphore(a->Sem_BuffReady, 1, 0);
 	LeaveCriticalSection (&a->csOUT);
-	LeaveCriticalSection (&a->csIN);
-	Sleep (50);
+	Sleep (2);
 	DeleteCriticalSection (&a->csOUT);
 	DeleteCriticalSection (&a->csIN);
 	CloseHandle (a->Sem_BuffReady);
@@ -134,7 +133,7 @@ void obdata (int id, double* out)
 {
 	int first, second;
 	OBB a = obp.pdbuff[id];
-	if (!_InterlockedAnd (&a->run, 1)) _endthread();
+	if (!_InterlockedAnd(&a->run, 1)) _endthread();
 	if (a->r1_outsize > (a->r1_active_buffsize - a->r1_outidx))
 	{
 		first = a->r1_active_buffsize - a->r1_outidx;
