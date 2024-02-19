@@ -1,4 +1,7 @@
-# Latest Release v2.10.3.4 Beta 3 7th January, 2024
+# Latest Release v2.10.3.4 19th February, 2024
+
+# 2.10.3.4 (2024-02-19)
+- Official release with time limit removed
 
 # 2.10.3.4 Beta 3 (2024-01-07)
 - Fixed Minor UI updates for better skin alignment.
