@@ -171,19 +171,30 @@ namespace Thetis
                 }
                 else
                 {
-                    if (tx)
+                    if (Console.getConsole().CurrentHPSDRModel == HPSDRModel.HERMESLITE)    // MI0BOT: Select correct LPF for 2 receivers
                     {
-                        if (VFOBTX)
-                            bits = TXABitMasks[idxb];
+                        if (tx)
+                        {
+                            if (VFOBTX)
+                                bits = TXABitMasks[idxb];
+                            else
+                                bits = TXABitMasks[idx];
+                        }
                         else
-                            bits = TXABitMasks[idx];
+                        {
+                            if (Console.getConsole().RX2Enabled && (idxb > idx))     // MI0BOT: Select the filter for the high band 
+                                bits = RXABitMasks[idxb];
+                            else
+                                bits = RXABitMasks[idx];
+                        }
                     }
                     else
                     {
-                        if (Console.getConsole().RX2Enabled && (idxb > idx))     // MI0BOT: Select the filter for the high band 
-                            bits = RXABitMasks[idxb];
-                        else
-                            bits = RXABitMasks[idx];
+                        if (tx && VFOBTX)
+                            bits = TXABitMasks[idxb];
+                        else if (tx)
+                            bits = TXABitMasks[idx];
+                        else bits = RXABitMasks[idx];
                     }
                 }
 			}

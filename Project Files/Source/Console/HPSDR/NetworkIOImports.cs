@@ -360,28 +360,31 @@ namespace Thetis
         public static extern void LRAudioSwap(int swap);
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetDiscoveryBoardType(int boardType);
+        public static extern void SetCATPort(int port);
+        
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetDiscoveryBoardType(int boardType);                         // MI0BOT: Allow the board type to be pass to lower level code
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetTxLatency(int txLatency);
+        public static extern void SetTxLatency(int txLatency);                                  // MI0BIT: Pass hardware TX latency to HL2
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetPttHang(int pttHang);
+        public static extern void SetPttHang(int pttHang);                                      // MI0BIT: Pass hardware PTT hang to HL2
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetResetOnDisconnect(int bit);
+        public static extern void SetResetOnDisconnect(int bit);                                // MI0BIT: Control reset on network disconnect
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int I2CReadInitiate(int bus, int address, int control);
+        public static extern int I2CReadInitiate(int bus, int address, int control);            // MI0BIT: I2C read start for HL2
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int I2CWriteInitiate(int bus, int address, int control, int data);
+        public static extern int I2CWriteInitiate(int bus, int address, int control, int data); // MI0BIT: I2C write start for HL2
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int I2CWrite(int bus, int address, int control, int data);
+        public static extern int I2CWrite(int bus, int address, int control, int data);         // MI0BIT: I2C write for HL2
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int I2CResponse(byte[] read_data);
+        public static extern int I2CResponse(byte[] read_data);                                 // MI0BIT: I2C read response for HL2                               
 
     }
 }
