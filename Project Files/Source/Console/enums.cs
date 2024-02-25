@@ -208,7 +208,6 @@
         FIRST = -1,
         HPSDR_OFF,
         HPSDR_ON,
-        HPSDR_PLUS10,
         HPSDR_MINUS10,
         HPSDR_MINUS20,
         HPSDR_MINUS30,
