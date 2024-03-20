@@ -1,4 +1,8 @@
-# Latest Release v2.10.3.5 3rd March, 2024
+# Latest Release v2.10.3.5 Beta 2 20th March, 2024
+
+# 2.10.3.5 Beta 2 (2024-03-20)
+- Updated with code updates to integrate with official code base
+- Removed HL2 options to it's own tab within the Options tab
 
 # 2.10.3.5 Beta 1 (2024-03-03)
 - Updated with latest code updates from official code base
