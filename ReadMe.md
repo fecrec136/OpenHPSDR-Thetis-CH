@@ -1,4 +1,11 @@
-# Latest Release v2.10.3.5 Beta 2 20th March, 2024
+# Latest Release v2.10.3.5 Beta 3 21st April, 2024
+
+# 2.10.3.5 Beta 3 (2024-04-21)
+- Fixed incorrect display of forward and reverse power
+- Fixed incorrect noise floor on Rx2 when changing frequency
+- Update I2C control to make it more robust
+- Added ability to control I/O Board output port
+- Fixed PS Sync option not updating on startup
 
 # 2.10.3.5 Beta 2 (2024-03-20)
 - Updated with code updates to integrate with official code base
