@@ -1,4 +1,10 @@
-# Latest Release v2.10.3.5 Beta 3 21st April, 2024
+# Latest Release v2.10.3.5 Beta 4 4th May, 2024
+
+# 2.10.3.5 Beta 4 (2024-05-04)
+- Updates from official repo
+- Fixed custom display showing all lines at startup
+- Added ability to control ICOM ATU power blip at start of tune (Setup|General|PA Control|ATU|Standalone ATU)
+- Fixed issue with CL2 control when I/O Board is not fitted
 
 # 2.10.3.5 Beta 3 (2024-04-21)
 - Fixed incorrect display of forward and reverse power
