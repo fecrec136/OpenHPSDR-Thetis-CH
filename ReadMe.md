@@ -1,4 +1,9 @@
-# Latest Release v2.10.3.5 Beta 4 4th May, 2024
+# Latest Release v2.10.3.5 Beta 5 24th May, 2024
+
+# 2.10.3.5 Beta 5 (2024-05-24)
+- Added missing label for auto attenuator
+- Corrected reverse power calculation 
+- Fixed tune power slider not remembering max setting
 
 # 2.10.3.5 Beta 4 (2024-05-04)
 - Updates from official repo
