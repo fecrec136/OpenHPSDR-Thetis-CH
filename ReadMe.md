@@ -1,4 +1,9 @@
-# Latest Release v2.10.3.5 Beta 5 24th May, 2024
+# Latest Release v2.10.3.5 Beta 6 17th June, 2024
+
+# 2.10.3.5 Beta 6 (2024-06-17)
+- HL2 now uses common directory for database
+- Updated code base to latest official release (2.10.3.6 dev_3)
+- Updated to allow ASIO on Protocol 1, YMMV
 
 # 2.10.3.5 Beta 5 (2024-05-24)
 - Added missing label for auto attenuator
