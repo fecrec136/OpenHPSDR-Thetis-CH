@@ -25,6 +25,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Desktop (please complete the following information):**
  - OS: [e.g. Windows7/8.1/10/11/etc]
+ - Thetis version:
 
 **Additional context**
 Add any other context about the problem here.
