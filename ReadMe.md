@@ -1,4 +1,9 @@
-# Latest Release v2.10.3.5 Beta 6 17th June, 2024
+# Latest Release v2.10.3.5 6th July, 2024
+
+# 2.10.3.5 (2024-07-06)
+- Updated to allow RF off delay before releasing PTT for Tun & 2TON
+- Updated to not over write txtPSpeak for PS
+- Updated to handle existing database.bak
 
 # 2.10.3.5 Beta 6 (2024-06-17)
 - HL2 now uses common directory for database
