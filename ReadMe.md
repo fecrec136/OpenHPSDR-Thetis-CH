@@ -1,9 +1,17 @@
-# Latest Release v2.10.3.6 Beta 2 20th July, 2024
+# Latest Release v2.10.3.6 Beta 3 5th August, 2024
+
+# 2.10.3.6 Beta 3 (2024-08-05)
+- Updated code base to latest official release (2.10.3.6 dev_8)
+- Fix for non disablement of PA when disabled from xvtr form
+- Added ability to select Alt Rx for transverter input in xvtr form
 
 # 2.10.3.6 Beta 2 (2024-07-20)
 - Updated code base to latest official release (2.10.3.6 dev_6b)
 - Fix for HL2 of Tx attenuator in official codebase 
 - Removed automatic renaming of database folder, the Thetis-HL2-x64 must be manually renamed to Thetis-x64
+
+# 2.10.3.6 Beta 1 (2024-07-06)
+- Updated code base to latest official release (2.10.3.6 dev_4)
 
 # 2.10.3.5 (2024-07-06)
 - Updated to allow RF off delay before releasing PTT for Tun & 2TON
