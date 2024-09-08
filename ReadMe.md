@@ -1,4 +1,8 @@
-# Latest Release v2.10.3.6 Beta 3 5th August, 2024
+# Latest Release v2.10.3.6 Beta 4 8th September, 2024
+
+# 2.10.3.6 Beta 4
+- Updated code base to latest official release (2.10.3.6 rc1)
+- Added HL2 database CLI option to shortcut
 
 # 2.10.3.6 Beta 3 (2024-08-05)
 - Updated code base to latest official release (2.10.3.6 dev_8)
