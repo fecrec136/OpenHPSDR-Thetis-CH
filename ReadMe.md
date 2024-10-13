@@ -1,4 +1,7 @@
-# Latest Release v2.10.3.6 Beta 5 12th September, 2024
+# Latest Release v2.10.3.6 Beta 6 13th October, 2024
+
+# 2.10.3.6 Beta 6 (2024-10-13)
+- Updated code base to latest official release (2.10.3.6 Final Release)
 
 # 2.10.3.6 Beta 5 (2024-09-12)
 - Updated code base to latest official release (2.10.3.6 rc2)
