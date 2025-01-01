@@ -1,4 +1,11 @@
-# Latest Release v2.10.3.7 Beta 2 18th December, 2024
+# Latest Release v2.10.3.7 1st January, 2025
+
+# 2.10.3.7 (2025-1-1)
+WARNING - This release requires a rebuild of the database if you are upgrading 
+from 2.10.3.6. If you have been running the betas of this release, you will have
+already rebuilt the database. Use the database manager to create a new database.
+
+- Formalised the release by removing the time limit
 
 # 2.10.3.7 Beta 2 (2024-12-18)
 WARNING - This release requires a rebuild of the database by using
