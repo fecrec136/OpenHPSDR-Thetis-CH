@@ -408,3 +408,9 @@ Project Files/lib/NR_Algorithms_x64/src/libspecbleach/build
 Project Files/lib/NR_Algorithms_x64/src/libspecbleach/old.git
 Project Files/lib/NR_Algorithms_x64/src/libspecbleach/old.github
 
+
+# Linux port: rnnoise x86 header shims
+!Project Files/Source/Linux/compat/rnnoise/x86/
+
+# Linux port build output
+Project Files/Source/Linux/build/

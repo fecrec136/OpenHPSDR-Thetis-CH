@@ -110,7 +110,7 @@ typedef struct _eq
 	fftw_plan CRev;
 }eq, *EQ;
 
-extern double* eq_mults (int size, int nfreqs, double* F, double* G, double samplerate, double scale, int ctfmode, int wintype);
+extern double* eq_mults (int size, int nfreqs, double* F, double* G, double* Q, double samplerate, double scale, int ctfmode, int wintype);
 
 extern EQ create_eq (int run, int size, double *in, double *out, int nfreqs, double* F, double* G, int ctfmode, int wintype, int samplerate);
 

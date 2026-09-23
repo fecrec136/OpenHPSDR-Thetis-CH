@@ -610,7 +610,10 @@ PaError PaPulseAudio_Initialize( PaUtilHostApiRepresentation ** hostApi,
                    __FUNCTION__) );
         PA_PULSEAUDIO_SET_LAST_HOST_ERROR( ret,
                                            "PulseAudio_Initialize: Can't connect to server");
-        result = paUnanticipatedHostError;
+        /* Thetis Linux port: no PulseAudio/PipeWire server is not fatal.  As
+         * the V19 docs (and the JACK host API) do, return a NULL interface and
+         * paNoError so Pa_Initialize() carries on with ALSA/JACK. */
+        result = paNoError;
         goto error;
     }
 
@@ -625,6 +628,7 @@ PaError PaPulseAudio_Initialize( PaUtilHostApiRepresentation ** hostApi,
 
         if( result > PA_OK )
         {
+            result = paNoError; /* Thetis Linux port: see above */
             goto error;
         }
 
@@ -798,6 +802,7 @@ PaError PaPulseAudio_Initialize( PaUtilHostApiRepresentation ** hostApi,
         PaPulseAudio_Free( pulseaudioHostApi );
         pulseaudioHostApi = NULL;
     }
+    *hostApi = NULL; /* Thetis Linux port: never hand back the freed representation */
 
     return result;
 }
