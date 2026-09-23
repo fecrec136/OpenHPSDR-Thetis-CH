@@ -62,9 +62,9 @@ static void *load(const char *path)
 static double run_tone(fexchange0_t fexchange0, double freq)
 {
     static double in[2 * IN_SIZE], out[2 * IN_SIZE];
-    double phase = 0.0, dphi = 2.0 * M_PI * freq / RATE, acc = 0.0;
+    double phase = 0.0, dphi = 2.0 * M_PI * freq / RATE, acc = 0.0, peak = 0.0;
     long n = 0;
-    int b, i, err;
+    int b, i, err, peak_block = -1, peak_index = -1;
     for (b = 0; b < BLOCKS; b++)
     {
         for (i = 0; i < IN_SIZE; i++)
@@ -77,8 +77,21 @@ static double run_tone(fexchange0_t fexchange0, double freq)
         fexchange0(0, in, out, &err);
         if (b >= SETTLE)
             for (i = 0; i < IN_SIZE; i++, n++)
-                acc += out[2 * i] * out[2 * i] + out[2 * i + 1] * out[2 * i + 1];
+            {
+                double p = out[2 * i] * out[2 * i] + out[2 * i + 1] * out[2 * i + 1];
+                acc += p;
+                if (p > peak) { peak = p; peak_block = b; peak_index = i; }
+            }
+        if (getenv("SMOKE_DUMP") && freq < 0 && b >= SETTLE)
+        {
+            int first = -1, last = -1, cnt = 0;
+            for (i = 0; i < IN_SIZE; i++)
+                if (fabs(out[2 * i]) > 1e-2 || fabs(out[2 * i + 1]) > 1e-2) { if (first < 0) first = i; last = i; cnt++; }
+            if (cnt) printf("    block %d: %d loud samples, first %d last %d, out[first]=%.2f out[last]=%.2f\n",
+                            b, cnt, first, last, out[2 * first], out[2 * last]);
+        }
     }
+    printf("  tone %+.0f Hz: output peak %.3e at block %d sample %d\n", freq, sqrt(peak), peak_block, peak_index);
     return sqrt(acc / (double)n);
 }
 

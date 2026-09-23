@@ -1,12 +1,27 @@
 # Thetis on Linux (Linux Mint / Ubuntu / Debian)
 
-This directory holds the native Linux build of Thetis. It is being done in
-stages:
+This directory holds the native Linux version of Thetis. It is being built
+in stages:
 
 | Stage | Component | Status |
 |---|---|---|
 | 1 | Native libraries: `wdsp`, `ChannelMaster`, `PA19` (PortAudio) | **Done**: builds and passes tests |
-| 2 | C# console (WinForms + SharpDX/Direct2D UI) | Not started, see [Next steps](#next-steps-the-c-console) |
+| 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
+| 3 | Transmit, PureSignal, full setup, CAT/TCI, meters, RX2, skins | Not started |
+
+## Quick start (Linux Mint 22)
+
+```sh
+cd "Project Files/Source/Linux"
+./build.sh --deps        # once: build tools, audio and FFTW libraries, .NET 8 SDK
+./build.sh --app         # native libraries + application into dist/thetis
+./install.sh             # menu entry "Thetis" and the 'thetis' command
+```
+
+The first start optimises the FFTs for your computer (FFTW "wisdom"). This
+takes several minutes, and later starts are quick. Then pick your radio and
+its model at the top, press **POWER**, and choose the sound device for
+receive audio at the bottom.
 
 ## Stage 1: native libraries
 
@@ -50,7 +65,7 @@ rpath), so keep the three together.
 
 ### How the port works
 
-The upstream C sources are compiled **unmodified** apart from the two small
+The upstream C sources are compiled **unmodified** apart from the three small
 changes listed below. This keeps merges from official Thetis easy.
 
 * `compat/include/win32compat.h` and `compat/win32compat.c` implement the
@@ -83,6 +98,15 @@ Changes to shared sources:
    missing PulseAudio/PipeWire server no longer makes `Pa_Initialize()` fail
    for every host API. It is skipped instead, as the JACK backend already
    does. This file is not compiled on Windows.
+3. `wdsp/iobuffs.c`, `dexchange()`: fixes a race that also exists on
+   Windows. With `bfo` ("block until output available", which ChannelMaster
+   uses for every channel), the producer may run one DSP block ahead.
+   `dexchange()` released `Sem_OutReady` *before* copying its input block out
+   of the two-slot `r1` ring, so a woken producer could overwrite that slot
+   first. The DSP then processed the wrong block, which is heard as a click
+   followed by about 40 ms of filter ringing. The copy now happens before the
+   release. Under CPU load the smoke test failed in 2 of 61 runs before the
+   fix and 0 of 90 after it.
 
 ### Real-time priority
 
@@ -97,19 +121,113 @@ echo '@audio - rtprio 95
 # log out and back in
 ```
 
-## Next steps: the C# console
+## Stage 2: the Avalonia application
 
-The console is a .NET Framework 4.8 WinForms application of about 430,000
-lines. Its spectrum, waterfall and meters are drawn with SharpDX
-(Direct2D/DXGI), which does not exist on Linux, and it P/Invokes about 60
-`user32`/`kernel32` functions. Porting it is a separate, larger piece of
-work. The native libraries above are needed whichever route is taken.
+The Windows console is a .NET Framework 4.8 WinForms application of about
+430,000 lines, drawing with SharpDX (Direct2D). Neither exists on Linux, so
+the user interface is being rebuilt on .NET 8 and
+[Avalonia](https://avaloniaui.net/). The radio logic underneath is reused
+from the Windows sources as far as possible.
 
-Points already known for that stage:
+![Thetis on Linux, receiving from the radio simulator](docs/screenshot.png)
+
+### Layout
+
+| Directory | What it is |
+|---|---|
+| `Thetis.Core/` | UI-independent radio library (net8.0) |
+| `Thetis.Core/Upstream/*.g.cs` | Blocks copied verbatim from the Windows sources by `tools/sync_upstream.py` (the ChannelMaster P/Invoke table, the router tables, the PureSignal imports) |
+| `Thetis.Core/Shims/` | Small stand-ins for the parts of the Windows console those files reference (`Display`, `NetworkIO`, `cmaster` start-up, `Win32.memcpy`) |
+| `Thetis.Core/Radio/RadioController.cs` | Power on/off, tuning, mode, filter, AGC, volume, NR, sample rate, S-meter, panadapter data, VAC. It follows the call order of the Windows console. |
+| `Thetis.Desktop/` | The Avalonia application |
+| `Tools/Thetis.RadioSim/` | Protocol 1 radio simulator (see below) |
+| `Tools/Thetis.CoreCheck/` | Headless end-to-end test of `Thetis.Core` |
+
+These Windows source files are compiled into `Thetis.Core` **unmodified**, so
+upstream changes flow in automatically: `HPSDR/clsRadioDiscovery.cs`,
+`HPSDR/NetworkIOImports.cs`, `HPSDR/specHPSDR.cs`, `dsp.cs`, `ivac.cs`,
+`enums.cs` and `clsHardwareSpecific.cs`. The only change to them is in
+`clsRadioDiscovery.cs`: two network-interface properties that .NET does not
+support on Linux (`IsDhcpEnabled`, `Speed`) are read inside `try`, which
+behaves the same on Windows.
+
+`NativeLibraries.cs` maps the Windows names in `[DllImport]` (`wdsp.dll`,
+`WDSP.dll`, `ChannelMaster.dll`, `PA19.dll`) to the `.so` files. It looks next
+to the application, then in `$THETIS_NATIVE_DIR`, then on the normal library
+path.
+
+### What works in this milestone
+
+* Discovery of Protocol 1 and Protocol 2 radios on every network interface
+* Power on/off with the model selected (DDC assignment, router tables and
+  audio mixer states per model, as `console.cs` does them)
+* VFO: wheel over a digit, double-click to type, arrow keys and page up/down,
+  wheel or click on the panadapter; tuning steps from 1 Hz to 100 kHz
+* Band buttons that remember the last frequency and mode per band
+* Modes LSB, USB, DSB, CWL, CWU, FM, AM, SAM, DIGL, DIGU, with the Windows
+  filter presets (F1..F10)
+* AGC (fixed, long, slow, medium, fast) and AGC gain, volume, NR2, auto-notch
+* Sample rates of 48, 96, 192 and 384 kHz
+* S-meter, and a panadapter and waterfall with zoom, adjustable dB scale and
+  a resizable split
+* Receive audio to a PC sound device through VAC (PulseAudio/PipeWire, ALSA
+  or JACK), or to the radio's own audio output
+* Settings saved in `~/.config/thetis-linux/settings.json`
+
+### Testing without a radio
+
+`Tools/Thetis.RadioSim` emulates a Hermes board over Protocol 1. It answers
+discovery, streams I/Q with test carriers at fixed RF frequencies that follow
+the host's tuning, and decodes the audio the host sends back to the radio
+(its rate, level and dominant tone). It sends I/Q with the spectrum
+orientation that the unmodified Thetis receive chain expects from OpenHPSDR
+hardware (`--textbook-iq` gives the opposite). It also stops streaming when
+the host goes quiet, as the Hermes firmware watchdog does.
+
+`Tools/Thetis.CoreCheck` drives `Thetis.Core` against it. It checks
+discovery, connecting, DDC tuning and retuning, the audio returned to the
+radio (48 kHz, the tone at the expected pitch, and following a retune),
+sideband rejection (about 59 dB), the S-meter, the position and height of the
+spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. All 22
+checks pass:
+
+```sh
+dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
+THETIS_NATIVE_DIR=$PWD/build dotnet run --project Tools/Thetis.CoreCheck -- ~/.local/share/thetis-linux /tmp/sim.json
+```
+
+To use the simulator with the application, start the application with
+`THETIS_DISCOVER_LOOPBACK=1` so that discovery also searches the loopback
+interface.
+
+**Not yet tested:** a real radio, and Protocol 2. The simulator speaks
+Protocol 1 only, and this development environment has no radio or sound
+card. The Protocol 2 path uses the same ported code (router tables, DDC and
+mixer set-up per model), but it has not been exercised.
+
+Found while porting (the Windows build behaves the same way):
+
+* Receiver 2's ChannelMaster input rate has to match the radio rate even when
+  RX2 is off. On P1 its audio is always in the output mixer, and the mixer
+  waits for every active input, so a stale rate throttled the audio sent to
+  the radio to a quarter of what it needs. The Windows console sets it from
+  the setup form at start-up. `RadioController` sets it with RX1's.
+* `NetworkIO.VFOfreq` truncates instead of rounding, so 7.1005 MHz became
+  7,100,499 Hz. The Linux copy rounds.
+
+### Not yet ported
+
+Transmit (MOX, TUNE, microphone, CW keyer), PureSignal, diversity, RX2 and
+the sub-receiver, the full setup form (calibration, Alex/BPF relay tables,
+ADC assignment, antenna selection, attenuator and preamp), band stacking, the
+MeterManager meters, CAT, TCI, MIDI, recording, and skins.
+
+Notes for those stages:
 
 * PortAudio's `unsigned long` fields (`PaSampleFormat`, `framesPerBuffer`,
-  callback status flags) are 64-bit on Linux. The C# PA19 struct and delegate
-  declarations must use `nuint`/`ulong` there.
-* Mono resolves `DllImport("wdsp.dll")` to `libwdsp.so` on its own.
-  .NET 8+ needs a `NativeLibrary.SetDllImportResolver` mapping.
-* The wisdom file directory passed to `WDSPwisdom()` must use `/`.
+  callback status flags) are 64-bit on Linux. Any C# declaration of PA19
+  stream structs or callbacks must use `nuint`/`ulong`. `AudioDevices.cs`
+  only reads `PaDeviceInfo`/`PaHostApiInfo`, which contain no `long` fields.
+* The upstream C# declaration of `nativeInitMetis` omits the last C
+  parameter (`p2hw_uses_differnt_ports`), so the native side reads an
+  undefined value on Windows too. `Thetis.Core` declares the full signature.

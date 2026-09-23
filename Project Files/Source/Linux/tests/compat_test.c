@@ -121,6 +121,27 @@ static void test_threads(void)
     CloseHandle(handoff);
 }
 
+static HANDLE blocked_on;
+static void block_forever(void *arg)
+{
+    (void)arg;
+    WaitForSingleObject(blocked_on, INFINITE);     /* never signalled, as in IOThreadStop() */
+}
+
+/* ChannelMaster's IOThreadStop() closes semaphores a thread is still blocked
+   on.  Windows keeps the object alive for the waiter; CloseHandle() must not
+   block or destroy it underneath the waiter. */
+static void test_close_while_waiting(void)
+{
+    double t0;
+    blocked_on = CreateSemaphore(NULL, 0, 1, NULL);
+    _beginthread(block_forever, 0, NULL);
+    Sleep(50);                                      /* let the thread start waiting */
+    t0 = now_ms();
+    CHECK(CloseHandle(blocked_on));
+    CHECK(now_ms() - t0 < 100.0);
+}
+
 static void test_wait_multiple(void)
 {
     HANDLE h[2];
@@ -199,6 +220,7 @@ int main(void)
     test_event();
     test_threads();
     test_wait_multiple();
+    test_close_while_waiting();
     test_timer();
     test_threadpool();
     test_misc();

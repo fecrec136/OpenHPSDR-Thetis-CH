@@ -1,0 +1,38 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Thetis.Desktop.App"
+             RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <FluentTheme DensityStyle="Compact" />
+
+    <!-- radio panel look: square-ish toggle buttons that light up when selected -->
+    <Style Selector="ToggleButton.panel">
+      <Setter Property="MinWidth" Value="46" />
+      <Setter Property="Padding" Value="6,3" />
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="ToggleButton.panel:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2E7D32" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ToggleButton#PowerButton:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#C62828" />
+    </Style>
+    <Style Selector="TextBlock.caption">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#9AA4AE" />
+      <Setter Property="Margin" Value="2,6,2,1" />
+    </Style>
+    <Style Selector="Border.group">
+      <Setter Property="Background" Value="#1B2127" />
+      <Setter Property="BorderBrush" Value="#2C353E" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="Margin" Value="3" />
+    </Style>
+  </Application.Styles>
+</Application>

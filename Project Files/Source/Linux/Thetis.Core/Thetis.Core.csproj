@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Thetis</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>$(NoWarn);CS8981;CA2255;CS0162;CS0168;CS0169;CS0219;CS0414;CS0649;CS1998;CA1416</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ConsoleDir>$(MSBuildThisFileDirectory)../../Console/</ConsoleDir>
+  </PropertyGroup>
+  <!-- upstream files compiled unmodified -->
+  <ItemGroup>
+    <Compile Include="$(ConsoleDir)HPSDR/clsRadioDiscovery.cs" Link="Upstream/clsRadioDiscovery.cs" />
+    <Compile Include="$(ConsoleDir)dsp.cs" Link="Upstream/dsp.cs" />
+    <Compile Include="$(ConsoleDir)ivac.cs" Link="Upstream/ivac.cs" />
+    <Compile Include="$(ConsoleDir)enums.cs" Link="Upstream/enums.cs" />
+    <Compile Include="$(ConsoleDir)clsHardwareSpecific.cs" Link="Upstream/clsHardwareSpecific.cs" />
+    <Compile Include="$(ConsoleDir)HPSDR/NetworkIOImports.cs" Link="Upstream/NetworkIOImports.cs" />
+    <Compile Include="$(ConsoleDir)HPSDR/specHPSDR.cs" Link="Upstream/specHPSDR.cs" />
+  </ItemGroup>
+</Project>

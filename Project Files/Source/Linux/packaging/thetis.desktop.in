@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Thetis
+GenericName=Software Defined Radio
+Comment=OpenHPSDR SDR console (Apache Labs ANAN, Hermes, Hermes-Lite 2)
+Exec=@OPT@/thetis
+Icon=@OPT@/thetis.png
+Terminal=false
+Categories=HamRadio;Audio;Network;
+Keywords=SDR;radio;ham;OpenHPSDR;ANAN;

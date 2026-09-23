@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
-# Build the Thetis native libraries (wdsp, ChannelMaster, PA19) on Linux Mint /
-# Ubuntu / Debian.
+# Build Thetis for Linux Mint / Ubuntu / Debian.
 #
-#   ./build.sh            configure, build and test into ./build
 #   ./build.sh --deps     first install the build dependencies with apt
-#   ./build.sh --native   optimise for this machine's CPU (-march=native)
+#   ./build.sh            build and test the native libraries into ./build
+#   ./build.sh --app      also publish the Avalonia application into ./dist/thetis
+#   ./build.sh --native   optimise the native libraries for this CPU (-march=native)
 #
-# The libraries end up in ./build (libwdsp.so, libChannelMaster.so, libPA19.so).
+# Native libraries: ./build/lib{wdsp,ChannelMaster,PA19}.so
+# Application:      ./dist/thetis/thetis  (self-contained; no .NET install needed to run it)
+# Install it for your user with ./install.sh
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_dir="${BUILD_DIR:-$here/build}"
+dist_dir="${DIST_DIR:-$here/dist/thetis}"
 native=OFF
+app=0
 
 for arg in "$@"; do
   case "$arg" in
     --deps)
       sudo apt-get update
       sudo apt-get install -y build-essential cmake pkg-config \
-        libfftw3-dev libasound2-dev libpulse-dev libjack-jackd2-dev
+        libfftw3-dev libasound2-dev libpulse-dev libjack-jackd2-dev \
+        dotnet-sdk-8.0
       ;;
     --native) native=ON ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    --app) app=1 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -31,5 +37,16 @@ cmake --build "$build_dir" -j"$(nproc)"
 (cd "$build_dir" && ctest --output-on-failure)
 
 echo
-echo "Built:"
+echo "Native libraries:"
 ls -l "$build_dir"/lib{wdsp,WDSP,ChannelMaster,PA19}.so
+
+if [ "$app" = 1 ]; then
+  echo
+  echo "Publishing the application..."
+  rm -rf "$dist_dir"
+  dotnet publish "$here/Thetis.Desktop/Thetis.Desktop.csproj" -c Release \
+    -r linux-x64 --self-contained true -o "$dist_dir"
+  cp -a "$build_dir"/libwdsp.so "$build_dir"/libWDSP.so "$build_dir"/libChannelMaster.so "$build_dir"/libPA19.so "$dist_dir"/
+  cp -a "$here/packaging/thetis.png" "$dist_dir"/ 2>/dev/null || true
+  echo "Application: $dist_dir/thetis"
+fi

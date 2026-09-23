@@ -79,7 +79,7 @@ enum { H_SEMAPHORE = 1, H_EVENT, H_THREAD, H_TIMER, H_WSAEVENT, H_PSEUDO };
 typedef struct compat_handle
 {
     int             type;
-    int             refs;           /* thread handles: owner + running thread */
+    int             refs;           /* owner(s), a running thread, and threads waiting on it */
     pthread_mutex_t mtx;
     pthread_cond_t  cond;
     /* semaphore */
@@ -117,18 +117,24 @@ static compat_handle *new_handle(int type)
     return h;
 }
 
+static void destroy_handle(compat_handle *h)
+{
+    pthread_cond_destroy(&h->cond);
+    pthread_mutex_destroy(&h->mtx);
+    free(h);
+}
+
+/* Drop one reference.  Like a Windows kernel object, a handle stays alive
+   while anyone holds a reference to it -- including a thread blocked in
+   WaitForSingleObject() -- so CloseHandle() on an object another thread is
+   waiting for does not destroy it underneath the waiter. */
 static void release_handle(compat_handle *h)
 {
     int refs;
     pthread_mutex_lock(&h->mtx);
     refs = --h->refs;
     pthread_mutex_unlock(&h->mtx);
-    if (refs == 0)
-    {
-        pthread_cond_destroy(&h->cond);
-        pthread_mutex_destroy(&h->mtx);
-        free(h);
-    }
+    if (refs == 0) destroy_handle(h);
 }
 
 HANDLE CreateSemaphore(void *sa, LONG initial, LONG maximum, const char *name)
@@ -270,6 +276,7 @@ DWORD WaitForSingleObject(HANDLE hh, DWORD ms)
     if (ms != INFINITE) abs_deadline(&deadline, ms);
 
     pthread_mutex_lock(&h->mtx);
+    h->refs++;                              /* keep the object alive while we wait */
     switch (h->type)
     {
     case H_SEMAPHORE:
@@ -333,7 +340,11 @@ DWORD WaitForSingleObject(HANDLE hh, DWORD ms)
         result = WAIT_FAILED;
         break;
     }
-    pthread_mutex_unlock(&h->mtx);
+    {
+        int last = (--h->refs == 0);
+        pthread_mutex_unlock(&h->mtx);
+        if (last) destroy_handle(h);
+    }
     return result;
 }
 

@@ -741,7 +741,8 @@ namespace Thetis
             nicResult.NicId = b.Nic.Id;
             nicResult.NicName = b.Nic.Name;
             nicResult.NicDescription = b.Nic.Description;
-            nicResult.NicSpeedBitsPerSecond = b.Nic.Speed;
+            // Speed is not available for every interface on Linux
+            try { nicResult.NicSpeedBitsPerSecond = b.Nic.Speed; } catch (PlatformNotSupportedException) { nicResult.NicSpeedBitsPerSecond = 0; }
             nicResult.LocalIPv4 = b.LocalIp;
             nicResult.LocalMaskIPv4 = b.Mask;
             nicResult.NicMacAddress = formatNicMac(b.Nic.GetPhysicalAddress());
@@ -795,7 +796,8 @@ namespace Thetis
             IPv4InterfaceProperties v4 = props.GetIPv4Properties();
             if (v4 != null)
             {
-                nicResult.IsDhcpEnabled = v4.IsDhcpEnabled;
+                // IsDhcpEnabled throws PlatformNotSupportedException on Linux
+                try { nicResult.IsDhcpEnabled = v4.IsDhcpEnabled; } catch (PlatformNotSupportedException) { nicResult.IsDhcpEnabled = false; }
                 nicResult.Mtu = v4.Mtu;
             }
         }

@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Thetis.Core", "Thetis.Core\Thetis.Core.csproj", "{4217F9DB-EF21-4829-904C-4692ADA33B80}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Thetis.Desktop", "Thetis.Desktop\Thetis.Desktop.csproj", "{E0D3CCD5-1BBC-4DAD-B5ED-14EA33E7FEC0}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{2C84F5DE-4A45-4D66-9035-D2BD086D9CC1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Thetis.RadioSim", "Tools\Thetis.RadioSim\Thetis.RadioSim.csproj", "{D1B4104F-2AD9-4D2C-B1A8-402448DE8490}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Thetis.CoreCheck", "Tools\Thetis.CoreCheck\Thetis.CoreCheck.csproj", "{63D3781D-27DB-41D4-ABB4-C5A5E0345448}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4217F9DB-EF21-4829-904C-4692ADA33B80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4217F9DB-EF21-4829-904C-4692ADA33B80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4217F9DB-EF21-4829-904C-4692ADA33B80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4217F9DB-EF21-4829-904C-4692ADA33B80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0D3CCD5-1BBC-4DAD-B5ED-14EA33E7FEC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0D3CCD5-1BBC-4DAD-B5ED-14EA33E7FEC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0D3CCD5-1BBC-4DAD-B5ED-14EA33E7FEC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0D3CCD5-1BBC-4DAD-B5ED-14EA33E7FEC0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1B4104F-2AD9-4D2C-B1A8-402448DE8490}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1B4104F-2AD9-4D2C-B1A8-402448DE8490}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1B4104F-2AD9-4D2C-B1A8-402448DE8490}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1B4104F-2AD9-4D2C-B1A8-402448DE8490}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63D3781D-27DB-41D4-ABB4-C5A5E0345448}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63D3781D-27DB-41D4-ABB4-C5A5E0345448}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63D3781D-27DB-41D4-ABB4-C5A5E0345448}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63D3781D-27DB-41D4-ABB4-C5A5E0345448}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D1B4104F-2AD9-4D2C-B1A8-402448DE8490} = {2C84F5DE-4A45-4D66-9035-D2BD086D9CC1}
+		{63D3781D-27DB-41D4-ABB4-C5A5E0345448} = {2C84F5DE-4A45-4D66-9035-D2BD086D9CC1}
+	EndGlobalSection
+EndGlobal

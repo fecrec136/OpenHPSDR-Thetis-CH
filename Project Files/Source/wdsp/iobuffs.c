@@ -586,6 +586,15 @@ void dexchange (int channel, double* in, double* out)
 	IOB a = ch[channel].iob.pd;
 	if (!_InterlockedAnd (&ch[channel].run, 1)) _endthread();
 
+	// Take the next input block out of r1 BEFORE releasing Sem_OutReady.  With
+	// bfo (block until output available) the producer may be one DSP block ahead
+	// (Sem_OutReady starts with a credit), so once it is released fexchange0()
+	// can immediately write into the r1 slot this memcpy reads; copying first
+	// removes that race (it showed up as occasional clicks under CPU load).
+	memcpy (out, a->r1_baseptr + 2 * a->r1_outidx, a->r1_outsize * sizeof (complex));
+	if ((a->r1_outidx += a->r1_outsize) == a->r1_active_buffsize)
+		a->r1_outidx = 0;
+
 	EnterCriticalSection (&a->r2_ControlSection);
 	a->r2_havesamps += a->r2_insize;
 	LeaveCriticalSection (&a->r2_ControlSection);
@@ -598,7 +607,4 @@ void dexchange (int channel, double* in, double* out)
 		ReleaseSemaphore(a->Sem_OutReady, n, 0);	
 		a->r2_unqueuedsamps -= n * a->out_size;
 	}
-	memcpy (out, a->r1_baseptr + 2 * a->r1_outidx, a->r1_outsize * sizeof (complex));
-	if ((a->r1_outidx += a->r1_outsize) == a->r1_active_buffsize)
-		a->r1_outidx = 0;
 }
