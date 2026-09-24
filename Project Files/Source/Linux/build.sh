@@ -22,7 +22,9 @@ appimage=0
 for arg in "$@"; do
   case "$arg" in
     --deps)
-      sudo apt-get update
+      # a broken third-party source (e.g. a missing signing key) makes 'update'
+      # fail; the packages below come from the distribution, so carry on
+      sudo apt-get update || echo "build.sh: 'apt-get update' reported errors (see above); installing anyway" >&2
       sudo apt-get install -y build-essential cmake pkg-config \
         libfftw3-dev zlib1g-dev libasound2-dev libpulse-dev libjack-jackd2-dev git \
         dotnet-sdk-8.0
