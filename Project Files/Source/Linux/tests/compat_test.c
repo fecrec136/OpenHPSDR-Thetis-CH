@@ -142,6 +142,25 @@ static void test_close_while_waiting(void)
     CHECK(now_ms() - t0 < 100.0);
 }
 
+/* Waiting on a handle after CloseHandle() fails like an invalid handle on
+   Windows instead of touching freed memory (ChannelMaster's IOThreadStop
+   closes the send thread's semaphores while that thread may still wait). */
+static void test_wait_after_close(void)
+{
+    HANDLE s = CreateSemaphore(NULL, 0, 1, NULL), e = CreateEvent(NULL, FALSE, FALSE, NULL);
+    HANDLE both[2];
+    both[0] = s; both[1] = e;
+    CHECK(CloseHandle(s));
+    CHECK(!CloseHandle(s));
+    CHECK(WaitForSingleObject(s, INFINITE) == WAIT_FAILED);
+    CHECK(!ReleaseSemaphore(s, 1, NULL));
+    CHECK(WaitForMultipleObjects(2, both, TRUE, INFINITE) == WAIT_FAILED);
+    CHECK(WaitForMultipleObjects(2, both, FALSE, INFINITE) == WAIT_FAILED);
+    CHECK(SetEvent(e));
+    CHECK(CloseHandle(e));
+    CHECK(!SetEvent(e));
+}
+
 static void test_wait_multiple(void)
 {
     HANDLE h[2];
@@ -221,6 +240,7 @@ int main(void)
     test_threads();
     test_wait_multiple();
     test_close_while_waiting();
+    test_wait_after_close();
     test_timer();
     test_threadpool();
     test_misc();

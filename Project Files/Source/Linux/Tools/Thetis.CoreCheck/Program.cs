@@ -4,9 +4,11 @@ This file is part of a program that implements a Software-Defined Radio.
 
 Headless end-to-end check of Thetis.Core against thetis-radiosim (or a real
 Protocol 1 radio): discovery, connect, tuning, demodulation, audio routing,
-S-meter and panadapter.  Exits non-zero if any check fails.
+S-meter, panadapter, and transmit: the transmit gates, band filters,
+tune carrier, microphone path, power meters, SWR protection, timeout and
+the radio's PTT input.  Exits non-zero if any check fails.
 
-usage: thetis-corecheck <data dir> <radiosim status file> [carrier MHz]
+usage: thetis-corecheck <data dir> <radiosim status file> [carrier MHz] [--stress-tx cycles]
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -44,15 +46,177 @@ internal static class Program
         throw new IOException("no radiosim status in " + file);
     }
 
+    private static void SimControl(string statusFile, double swr, bool ptt) =>
+        File.WriteAllText(statusFile + ".ctl", FormattableString.Invariant($"{{\"swr\":{swr},\"ptt\":{(ptt ? "true" : "false")}}}"));
+
+    /// <summary>Poll the simulator status until 'pred' holds (true) or 'ms' elapse (false).</summary>
+    private static bool WaitSim(string file, Func<JsonElement, bool> pred, int ms, out JsonElement st)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        do
+        {
+            st = SimStatus(file);
+            if (pred(st)) return true;
+            Thread.Sleep(200);
+        } while (sw.ElapsedMilliseconds < ms);
+        return false;
+    }
+
+    private static void Transmit(RadioController radio, string statusFile, double tuneMHz)
+    {
+        string refused = null;
+        radio.TxRefused += r => { refused = r; Console.WriteLine("  tx: " + r); };
+        radio.Mode = DSPMode.USB;
+        radio.Agc = AGCMode.MED;
+        radio.MicSource = MicSource.Radio;
+        radio.MicGainDb = 10;
+
+        Console.WriteLine("== transmit gates");
+        Check(!radio.SetTune(true, out string why) && !radio.Mox, "TUNE refused while transmit is disabled (" + why + ")");
+        radio.TransmitAllowed = true;
+        Check(!radio.SetTune(true, out why) && !radio.Mox, "TUNE refused until a region is chosen (" + why + ")");
+        radio.Region = TxRegion.IaruRegion1;
+        radio.FrequencyMHz = 7.199;               // USB 100-3000 Hz reaches 7.202 MHz, past the Region 1 band edge
+        Check(!radio.SetMox(true, out why) && !radio.Mox, "MOX refused when the passband leaves the band (" + why + ")");
+        radio.FrequencyMHz = 7.350;
+        Check(!radio.SetTune(true, out why) && !radio.Mox, "TUNE refused outside the amateur bands (" + why + ")");
+        radio.FrequencyMHz = tuneMHz;
+        Thread.Sleep(1500);
+        Check(!SimStatus(statusFile).GetProperty("mox").GetBoolean(), "radio never keyed by a refused request");
+
+        Console.WriteLine("== receive filters");
+        WaitSim(statusFile, s => s.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, 3000, out var st);
+        Check(st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40 && st.GetProperty("hpf_bits").GetInt32() == BandFilters.Hpf6_5MHz,
+              $"7.1 MHz: 60/40 m LPF, 6.5 MHz HPF (lpf {st.GetProperty("lpf_bits")}, hpf {st.GetProperty("hpf_bits")})");
+        radio.FrequencyMHz = 14.2;
+        WaitSim(statusFile, s => s.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf30_20, 3000, out st);
+        Check(st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf30_20 && st.GetProperty("hpf_bits").GetInt32() == BandFilters.Hpf13MHz,
+              $"14.2 MHz: 30/20 m LPF, 13 MHz HPF (lpf {st.GetProperty("lpf_bits")}, hpf {st.GetProperty("hpf_bits")})");
+        radio.FrequencyMHz = 3.7;
+        WaitSim(statusFile, s => s.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf80, 3000, out st);
+        Check(st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf80 && st.GetProperty("hpf_bits").GetInt32() == BandFilters.Hpf1_5MHz,
+              $"3.7 MHz: 80 m LPF, 1.5 MHz HPF (lpf {st.GetProperty("lpf_bits")}, hpf {st.GetProperty("hpf_bits")})");
+        radio.FrequencyMHz = tuneMHz;
+
+        Console.WriteLine("== TUNE at 10 % into a 1.2:1 load");
+        radio.TunePercent = 10;
+        Check(radio.SetTune(true, out why) && radio.Mox && radio.Tuning, "TUNE keyed" + (why == null ? "" : ": " + why));
+        Check(WaitSim(statusFile, s => s.GetProperty("mox").GetBoolean() && s.GetProperty("fwd_w").GetDouble() > 1, 4000, out st), "radio sees MOX and puts out power");
+        Thread.Sleep(1200);
+        st = SimStatus(statusFile);
+        Console.WriteLine("  sim: " + st);
+        Check(st.GetProperty("tx_hz").GetInt64() == (long)Math.Round(tuneMHz * 1e6), "TX frequency sent");
+        Check(st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, "60/40 m LPF in circuit on transmit");
+        Check(Math.Abs(st.GetProperty("tx_tone_hz").GetDouble() - FilterPresets.CwPitch) <= 25, $"tune carrier at +{FilterPresets.CwPitch} Hz (got {st.GetProperty("tx_tone_hz")} Hz)");
+        double fwd = st.GetProperty("fwd_w").GetDouble();
+        Check(fwd > 7 && fwd < 13, $"10 % tune gives about 10 W ({fwd:F1} W)");
+        Console.WriteLine($"  meters: fwd {radio.ForwardWatts:F1} W, ref {radio.ReflectedWatts:F2} W, SWR {radio.Swr:F2}");
+        Check(Math.Abs(radio.ForwardWatts - fwd) < 0.15 * fwd + 0.5, "forward power meter agrees with the radio");
+        Check(Math.Abs(radio.Swr - 1.2) < 0.15, "SWR meter reads 1.2:1");
+
+        Console.WriteLine("== retune while transmitting");
+        radio.FrequencyMHz = tuneMHz + 0.01;
+        Check(radio.Mox, "in-band retune keeps transmitting");
+        Check(WaitSim(statusFile, s => s.GetProperty("tx_hz").GetInt64() == (long)Math.Round((tuneMHz + 0.01) * 1e6), 3000, out _), "TX frequency followed");
+        radio.FrequencyMHz = 14.2;
+        Check(!radio.Mox, "retune to another band unkeys");
+        Check(WaitSim(statusFile, s => !s.GetProperty("mox").GetBoolean(), 3000, out _), "radio unkeyed");
+        radio.FrequencyMHz = tuneMHz;
+
+        Console.WriteLine("== high SWR: TUNE at 80 % into 3:1");
+        SimControl(statusFile, 3.0, false);
+        radio.TunePercent = 80;
+        refused = null;
+        radio.SetTune(true, out _);
+        Thread.Sleep(3500);
+        st = SimStatus(statusFile);
+        Console.WriteLine($"  meters: fwd {radio.ForwardWatts:F1} W, ref {radio.ReflectedWatts:F1} W, SWR {radio.Swr:F2}, sim fwd {st.GetProperty("fwd_w")} W");
+        Check(radio.HighSwr && refused != null && refused.StartsWith("High SWR"), "high SWR detected");
+        Check(radio.Mox && st.GetProperty("fwd_w").GetDouble() < 40, $"drive folded back ({st.GetProperty("fwd_w")} W instead of ~80 W)");
+        radio.SetTune(false, out _);
+        SimControl(statusFile, 1.2, false);
+        Thread.Sleep(1500);                      // the simulator reads its control file once a second
+
+        Console.WriteLine("== MOX with the radio's microphone (USB, 1 kHz tone at -20 dBFS)");
+        radio.DrivePercent = 50;
+        radio.MicGainDb = 20;
+        Check(radio.SetMox(true, out why) && radio.Mox && !radio.Tuning, "MOX keyed" + (why == null ? "" : ": " + why));
+        Thread.Sleep(2500);
+        st = SimStatus(statusFile);
+        Console.WriteLine("  sim: " + st);
+        Console.WriteLine($"  mic peak {radio.MicPeakDb():F1} dB, ALC {radio.AlcGainDb():F1} dB, fwd {radio.ForwardWatts:F1} W");
+        Check(radio.MicPeakDb() > -40, "mic level registered");
+        Check(Math.Abs(st.GetProperty("tx_tone_hz").GetDouble() - 1000) <= 25, $"USB transmits the 1 kHz mic tone at +1 kHz (got {st.GetProperty("tx_tone_hz")} Hz)");
+        Check(st.GetProperty("fwd_w").GetDouble() > 5, $"output power ({st.GetProperty("fwd_w")} W)");
+        radio.Mode = DSPMode.LSB;
+        Check(!radio.Mox, "mode change unkeys");
+        radio.SetMox(true, out _);
+        Thread.Sleep(2500);
+        st = SimStatus(statusFile);
+        Check(Math.Abs(st.GetProperty("tx_tone_hz").GetDouble() + 1000) <= 25, $"LSB transmits it at -1 kHz (got {st.GetProperty("tx_tone_hz")} Hz)");
+        radio.SetMox(false, out _);
+        radio.Mode = DSPMode.USB;
+
+        Console.WriteLine("== open antenna");
+        radio.DrivePercent = 100;
+        radio.SetMox(true, out _);
+        Thread.Sleep(1500);
+        SimControl(statusFile, 1e6, false);     // no load: everything comes back
+        Check(WaitSim(statusFile, s => !s.GetProperty("mox").GetBoolean(), 5000, out _) && !radio.Mox, "open antenna unkeys the radio");
+        Check(refused != null && refused.Contains("open antenna"), "operator told why");
+        SimControl(statusFile, 1.2, false);
+        Thread.Sleep(1500);
+
+        Console.WriteLine("== timeout");
+        radio.TxTimeoutSeconds = 2;
+        radio.TunePercent = 10;
+        radio.SetTune(true, out _);
+        Thread.Sleep(3000);
+        Check(!radio.Mox && refused != null && refused.Contains("timeout"), "transmit timeout unkeys");
+        radio.TxTimeoutSeconds = 180;
+
+        Console.WriteLine("== radio PTT input");
+        radio.DrivePercent = 10;
+        SimControl(statusFile, 1.2, true);
+        Check(WaitSim(statusFile, s => s.GetProperty("mox").GetBoolean(), 4000, out _) && radio.Mox && radio.TxSource == TxSource.RadioPtt, "PTT keys the radio");
+        SimControl(statusFile, 1.2, false);
+        Check(WaitSim(statusFile, s => !s.GetProperty("mox").GetBoolean(), 4000, out _) && !radio.Mox, "releasing PTT unkeys it");
+
+        Console.WriteLine("== power off while transmitting");
+        radio.SetTune(true, out _);
+        Thread.Sleep(500);
+    }
+
+    /// <summary>Power on, key TUNE, power off -- repeatedly (shutdown while transmitting).</summary>
+    private static int StressTx(RadioController radio, DiscoveredRadio target, int cycles)
+    {
+        radio.TransmitAllowed = true;
+        radio.Region = TxRegion.IaruRegion1;
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = 7.1;
+        var rng = new Random(1);
+        for (int i = 0; i < cycles; i++)
+        {
+            if (!radio.Start(target, HPSDRModel.HERMES, out string error)) { Console.WriteLine("start failed: " + error); return 1; }
+            Thread.Sleep(300 + rng.Next(500));
+            radio.SetTune(true, out _);
+            Thread.Sleep(rng.Next(600));
+            radio.Stop();
+            Console.WriteLine($"cycle {i + 1} ok");
+            Thread.Sleep(rng.Next(300));
+        }
+        return 0;
+    }
+
     private static int Main(string[] args)
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: thetis-corecheck <data dir> <radiosim status file> [carrier MHz]");
+            Console.Error.WriteLine("usage: thetis-corecheck <data dir> <radiosim status file> [carrier MHz] [--stress-tx cycles]");
             return 2;
         }
         string dataDir = args[0], statusFile = args[1];
-        double carrierMHz = args.Length > 2 ? double.Parse(args[2], CultureInfo.InvariantCulture) : 7.1015;
+        double carrierMHz = args.Length > 2 && !args[2].StartsWith("--") ? double.Parse(args[2], CultureInfo.InvariantCulture) : 7.1015;
         const double tuneMHz = 7.100;
         double toneHz = (carrierMHz - tuneMHz) * 1e6;
 
@@ -70,6 +234,10 @@ internal static class Program
         if (found.Count == 0) return 1;
         var target = found.FirstOrDefault(r => r.Nic.IsLoopbackLocal) ?? found[0];
         Check(target.Info.DeviceType == HPSDRHW.Hermes, "board reported as Hermes");
+
+        int stress = Array.IndexOf(args, "--stress-tx");
+        if (stress >= 0)
+            return StressTx(radio, target, int.Parse(args[stress + 1]));
 
         Console.WriteLine("== connect (USB, 7.100 MHz, 48 kHz)");
         radio.SampleRate = 48000;
@@ -136,6 +304,20 @@ internal static class Program
         double fixedLsb = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
         Console.WriteLine($"  fixed-gain audio: USB {fixedUsb:F1} dBFS, LSB {fixedLsb:F1} dBFS");
         Check(fixedUsb - fixedLsb > 30, "LSB rejects the upper-sideband carrier by >30 dB");
+
+        File.Delete(statusFile + ".ctl");
+        Transmit(radio, statusFile, tuneMHz);
+        bool keyed = radio.Mox;
+        radio.Stop();
+        Thread.Sleep(1500);
+        st = SimStatus(statusFile);
+        Check(keyed && !radio.Mox && !st.GetProperty("mox").GetBoolean() && !st.GetProperty("streaming").GetBoolean(), "power off unkeys and stops the radio");
+        File.Delete(statusFile + ".ctl");
+
+        Console.WriteLine("== restart");
+        started = radio.Start(target, HPSDRModel.HERMES, out error);
+        Check(started && !radio.Mox, "radio restarted, receiving");
+        Thread.Sleep(2000);
 
         Console.WriteLine("== sample rate 192 kHz");
         radio.Mode = DSPMode.USB;

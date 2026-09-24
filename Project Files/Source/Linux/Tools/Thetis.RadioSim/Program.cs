@@ -12,9 +12,16 @@ the Linux build without hardware.  It
   * decodes the audio the host sends back to the radio's codec (EP2) and
     reports its level and dominant tone, so the whole receive chain --
     tuning, demodulation, filtering, audio routing -- can be checked
-    without a sound card.
+    without a sound card,
+  * sends a microphone tone in the mic samples,
+  * decodes what the host sends for transmit -- MOX, TX frequency, drive,
+    Alex filter and open-collector bits -- and analyses the TX I/Q,
+  * models a PA and directional coupler, reporting forward and reflected
+    power into a load of chosen SWR,
+  * reads '<status file>.ctl' ({"swr": 3.0, "ptt": true}) to change the
+    load SWR or press the radio's PTT input while running.
 
-usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--textbook-iq]
+usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq]
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -48,6 +55,25 @@ namespace Thetis.RadioSim
         private static readonly long[] _ddcFreq = new long[8];
         private static long _packetsIn, _packetsOut;
 
+        // --- transmit state decoded from the host's C&C frames ---
+        private static bool _mox;                          // C0 bit 0
+        private static long _txFreq;                       // address 1
+        private static int _drive;                         // address 9 C1 (0..255)
+        private static int _hpfBits = -1, _lpfBits = -1;   // address 9 C3 / C4 (Alex)
+        private static int _paDisable;                     // address 9 C3 bit 7
+        private static int _ocBits;                        // address 0 C2 bits 7..1
+        private static long _moxFrames;                    // frames received with MOX set
+        private static readonly float[] _txI = new float[24000], _txQ = new float[24000];   // last 0.5 s of TX I/Q
+        private static int _txPos;
+        private static long _txSamples;
+
+        // --- simulated PA and coupler (Hermes / 100 W class) ---
+        private static double _maxPowerW = 100.0;          // PA saturates here
+        private static double _paGainDb = 41.3;            // Hermes default PA gain for 40 m (clsHardwareSpecific)
+        private static double _loadSwr = 1.2;              // set via the control file
+        private static bool _radioPtt;                     // set via the control file
+        private static volatile float _fwdW, _revW;
+
         // --- received EP2 audio analysis ---
         private static readonly float[] _audio = new float[24000];     // last 0.5 s of left channel at 48 kHz
         private static int _audioPos;
@@ -58,8 +84,12 @@ namespace Thetis.RadioSim
         private static Socket _sock;
         // OpenHPSDR hardware delivers the spectrum mirrored relative to I=cos, Q=sin;
         // the (unmodified) Thetis receive chain expects exactly that, so the
-        // simulator sends Q = -sin by default.  --textbook-iq sends Q = +sin.
+        // simulator sends Q = -sin by default.  Transmit I/Q uses the same
+        // orientation, so it is mirrored back before analysis.  --textbook-iq
+        // uses Q = +sin both ways.
         private static double _qSign = -1.0;
+        // microphone tone sent in the EP6 mic samples (the radio's mic input)
+        private static double _micHz = 1000.0, _micAmp = Math.Pow(10.0, -20.0 / 20.0);
 
         private static int Main(string[] args)
         {
@@ -73,6 +103,14 @@ namespace Thetis.RadioSim
                     case "--noise": _noise = Math.Pow(10.0, double.Parse(args[++i], CultureInfo.InvariantCulture) / 20.0); break;
                     case "--status-file": statusFile = args[++i]; break;
                     case "--textbook-iq": _qSign = 1.0; break;
+                    case "--max-power": _maxPowerW = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
+                    case "--pa-gain": _paGainDb = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
+                    case "--mic-tone":
+                        string[] m = args[++i].Split(':');
+                        _micHz = double.Parse(m[0], CultureInfo.InvariantCulture);
+                        _micAmp = m.Length > 1 ? Math.Pow(10.0, double.Parse(m[1], CultureInfo.InvariantCulture) / 20.0) : _micAmp;
+                        break;
+                    case "--swr": _loadSwr = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--carrier":
                         string[] p = args[++i].Split(':');
                         double f = double.Parse(p[0], CultureInfo.InvariantCulture) * 1e6;
@@ -81,7 +119,7 @@ namespace Thetis.RadioSim
                         break;
                     case "-h":
                     case "--help":
-                        Console.WriteLine("usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--textbook-iq]");
+                        Console.WriteLine("usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq]");
                         return 0;
                     default:
                         Console.Error.WriteLine("unknown option " + args[i]);
@@ -148,16 +186,40 @@ namespace Thetis.RadioSim
                 if (buf[b] != 0x7f || buf[b + 1] != 0x7f || buf[b + 2] != 0x7f) continue;
                 byte c0 = buf[b + 3], c1 = buf[b + 4], c2 = buf[b + 5], c3 = buf[b + 6], c4 = buf[b + 7];
                 int addr = c0 >> 1;
+                bool mox = (c0 & 1) != 0;
                 lock (_lock)
                 {
+                    _mox = mox;
+                    if (mox) _moxFrames++;
+                    long f32 = ((long)c1 << 24) | ((long)c2 << 16) | ((long)c3 << 8) | c4;
                     if (addr == 0)
                     {
                         _rateBits = c1 & 3;
+                        _ocBits = (c2 >> 1) & 0x7f;
                         _nddc = ((c4 >> 3) & 7) + 1;
                     }
-                    else if (addr >= 2 && addr <= 9)
+                    else if (addr == 1)
+                        _txFreq = f32;
+                    else if (addr >= 2 && addr <= 8)
+                        _ddcFreq[addr - 2] = f32;
+                    else if (addr == 9)
                     {
-                        _ddcFreq[addr - 2] = ((long)c1 << 24) | ((long)c2 << 16) | ((long)c3 << 8) | c4;
+                        _drive = c1;
+                        _hpfBits = c3 & 0x7f;
+                        _paDisable = (c3 >> 7) & 1;
+                        _lpfBits = c4 & 0x7f;
+                    }
+                }
+                lock (_txI)
+                {
+                    for (int s = 0; s < 63; s++)
+                    {
+                        int k = b + 8 + 8 * s + 4;
+                        _txI[_txPos] = (short)((buf[k] << 8) | buf[k + 1]) / 32768f;
+                        // same (mirrored) orientation as the receive I/Q; see _qSign
+                        _txQ[_txPos] = (float)(_qSign * (short)((buf[k + 2] << 8) | buf[k + 3]) / 32768.0);
+                        _txPos = (_txPos + 1) % _txI.Length;
+                        _txSamples++;
                     }
                 }
                 // 63 samples of L R I Q, 16-bit big-endian
@@ -193,6 +255,7 @@ namespace Thetis.RadioSim
             byte[] pkt = new byte[1032];
             uint seq = 0;
             double[] phase = new double[8 * 8];
+            double micPhase = 0;
             var sw = Stopwatch.StartNew();
             long samplesSent = 0;
             bool wasStreaming = false;
@@ -226,7 +289,22 @@ namespace Thetis.RadioSim
                     int b = 8 + 512 * frame;
                     Array.Clear(pkt, b, 512);
                     pkt[b] = 0x7f; pkt[b + 1] = 0x7f; pkt[b + 2] = 0x7f;
-                    pkt[b + 3] = 0;         // C0: no PTT, register 0
+                    // C&C rotation as a Hermes sends it: 0x00 status, 0x08 exciter/forward,
+                    // 0x10 reverse, 0x18 user ADC/supply; C0 bit 0 = PTT input
+                    int rot = (int)((seq * 2 + frame) % 4);
+                    byte ptt = _radioPtt ? (byte)1 : (byte)0;
+                    pkt[b + 3] = (byte)((rot << 3) | ptt);
+                    if (rot == 1)
+                    {
+                        int fwd = CouplerAdc(_fwdW, 0.09, 6);
+                        pkt[b + 4] = 0; pkt[b + 5] = 0;                           // exciter (not modelled)
+                        pkt[b + 6] = (byte)(fwd >> 8); pkt[b + 7] = (byte)fwd;
+                    }
+                    else if (rot == 2)
+                    {
+                        int rev = CouplerAdc(_revW, 0.09, 3);
+                        pkt[b + 4] = (byte)(rev >> 8); pkt[b + 5] = (byte)rev;
+                    }
                     for (int s = 0; s < spr; s++)
                     {
                         for (int d = 0; d < nddc; d++)
@@ -247,6 +325,13 @@ namespace Thetis.RadioSim
                             Put24(pkt, k, i);
                             Put24(pkt, k + 3, q);
                         }
+                        // mic: 16-bit at the end of each sample slot; the host keeps every
+                        // (rate / 48 kHz)th one, so advancing at 'rate' gives the right tone
+                        micPhase += 2.0 * Math.PI * _micHz / rate;
+                        if (micPhase > Math.PI) micPhase -= 2.0 * Math.PI;
+                        int mic = (int)Math.Round(_micAmp * Math.Sin(micPhase) * 32767.0);
+                        int mk = b + 8 + s * (6 * nddc + 2) + nddc * 6;
+                        pkt[mk] = (byte)(mic >> 8); pkt[mk + 1] = (byte)mic;
                     }
                 }
                 if (host != null)
@@ -260,6 +345,14 @@ namespace Thetis.RadioSim
                 double ahead = due - sw.Elapsed.TotalMilliseconds;
                 if (ahead > 2.0) Thread.Sleep((int)ahead);
             }
+        }
+
+        /// <summary>Watts -> 12-bit coupler ADC reading with the Hermes constants the host uses to convert back.</summary>
+        private static int CouplerAdc(double watts, double bridgeVolt, int offset)
+        {
+            if (watts <= 0) return 0;
+            double volts = Math.Sqrt(watts * bridgeVolt);
+            return (int)Math.Clamp(Math.Round(volts / 3.3 * 4095.0) + offset, 0, 4095);
         }
 
         private static void Put24(byte[] p, int k, double v)
@@ -302,6 +395,41 @@ namespace Thetis.RadioSim
                 long rx1;
                 int nddc, rate;
                 lock (_lock) { rx1 = _ddcFreq[0]; nddc = _nddc; rate = 48000 << _rateBits; }
+
+                // control file: {"swr": 3.0, "ptt": true}
+                if (statusFile != null && File.Exists(statusFile + ".ctl"))
+                {
+                    try
+                    {
+                        var ctl = JsonDocument.Parse(File.ReadAllText(statusFile + ".ctl")).RootElement;
+                        if (ctl.TryGetProperty("swr", out var sw)) _loadSwr = sw.GetDouble();
+                        if (ctl.TryGetProperty("ptt", out var pt)) _radioPtt = pt.GetBoolean();
+                    }
+                    catch (Exception) { }
+                }
+
+                // transmit analysis: level and dominant tone of the TX I/Q (complex, -4..+4 kHz)
+                float[] ti = new float[_txI.Length], tq = new float[_txQ.Length];
+                lock (_txI) { Array.Copy(_txI, ti, ti.Length); Array.Copy(_txQ, tq, tq.Length); }
+                double txPow = 0;
+                for (int n2 = 0; n2 < ti.Length; n2++) txPow += ti[n2] * ti[n2] + tq[n2] * tq[n2];
+                txPow /= ti.Length;
+                double txTone = 0, txBest = 0;
+                for (int f = -4000; f <= 4000; f += 25)
+                {
+                    double pw = GoertzelComplex(ti, tq, f, 48000);
+                    if (pw > txBest) { txBest = pw; txTone = f; }
+                }
+                bool mox; int drive, hpf, lpf, oc, pa; long txf, moxFrames;
+                lock (_lock) { mox = _mox; drive = _drive; hpf = _hpfBits; lpf = _lpfBits; oc = _ocBits; pa = _paDisable; txf = _txFreq; moxFrames = _moxFrames; }
+
+                // PA model, the inverse of the host's drive calculation: drive byte ->
+                // 0.8 V full-scale DAC into 50 ohm -> PA gain, times the I/Q power
+                double dacV = drive / 255.0 / 1.02 * 0.8;
+                double fwdW = mox ? Math.Min(dacV * dacV / 0.05 * Math.Pow(10, _paGainDb / 10) / 1000.0 * Math.Min(txPow, 1.0), _maxPowerW) : 0.0;
+                double gamma = (_loadSwr - 1.0) / (_loadSwr + 1.0);
+                _fwdW = (float)fwdW;
+                _revW = (float)(fwdW * gamma * gamma);
                 var status = new
                 {
                     streaming = _streaming,
@@ -313,6 +441,20 @@ namespace Thetis.RadioSim
                     audio_samples = total,
                     audio_rms_dbfs = rms > 0 ? 20 * Math.Log10(rms) : -200.0,
                     audio_peak_hz = bestF,
+                    mox,
+                    mox_frames = moxFrames,
+                    tx_hz = txf,
+                    drive,
+                    hpf_bits = hpf,
+                    lpf_bits = lpf,
+                    oc_bits = oc,
+                    pa_disable = pa,
+                    tx_iq_dbfs = txPow > 0 ? 10 * Math.Log10(txPow) : -200.0,
+                    tx_tone_hz = txTone,
+                    fwd_w = Math.Round(fwdW, 2),
+                    rev_w = Math.Round(fwdW * gamma * gamma, 2),
+                    load_swr = _loadSwr,
+                    radio_ptt = _radioPtt,
                 };
                 string json = JsonSerializer.Serialize(status);
                 if (_streaming) Console.WriteLine("radiosim: " + json);
@@ -321,6 +463,22 @@ namespace Thetis.RadioSim
                     try { File.WriteAllText(statusFile + ".tmp", json); File.Move(statusFile + ".tmp", statusFile, true); } catch (IOException) { }
                 }
             }
+        }
+
+        /// <summary>Power at frequency f (may be negative) of the complex signal i + jq.</summary>
+        private static double GoertzelComplex(float[] i, float[] q, double f, double fs)
+        {
+            double w = -2.0 * Math.PI * f / fs, re = 0, im = 0, c = 1, sn = 0, cw = Math.Cos(w), sw = Math.Sin(w);
+            for (int n = 0; n < i.Length; n++)
+            {
+                // (i + jq) * e^{jwn}
+                re += i[n] * c - q[n] * sn;
+                im += i[n] * sn + q[n] * c;
+                double c2 = c * cw - sn * sw;
+                sn = c * sw + sn * cw;
+                c = c2;
+            }
+            return re * re + im * im;
         }
 
         private static double Goertzel(float[] x, double f, double fs)

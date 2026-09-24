@@ -80,6 +80,9 @@ typedef struct compat_handle
 {
     int             type;
     int             refs;           /* owner(s), a running thread, and threads waiting on it */
+    int             closed;         /* CloseHandle() called: the handle value is no longer valid */
+    struct compat_handle *next_zombie;
+    struct timespec released;
     pthread_mutex_t mtx;
     pthread_cond_t  cond;
     /* semaphore */
@@ -117,11 +120,52 @@ static compat_handle *new_handle(int type)
     return h;
 }
 
-static void destroy_handle(compat_handle *h)
+/* Objects nobody references any more are not freed at once.  On Windows a
+   HANDLE is an index into a table, so using one after CloseHandle() fails
+   cleanly with ERROR_INVALID_HANDLE -- and upstream code relies on that:
+   IOThreadStop() closes the semaphores of the Protocol 1 send thread
+   without waiting for the thread, which may be just about to wait on them.
+   Here a HANDLE is a pointer, so the memory is kept for a grace period and
+   the 'closed' flag makes such a late wait fail as it would on Windows. */
+#define ZOMBIE_GRACE_S 10
+
+static pthread_mutex_t zombie_mtx = PTHREAD_MUTEX_INITIALIZER;
+static compat_handle  *zombie_head, *zombie_tail;
+
+static void free_handle(compat_handle *h)
 {
     pthread_cond_destroy(&h->cond);
     pthread_mutex_destroy(&h->mtx);
     free(h);
+}
+
+static void destroy_handle(compat_handle *h)
+{
+    struct timespec now;
+    compat_handle *reap = NULL;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    h->released = now;
+    h->next_zombie = NULL;
+    pthread_mutex_lock(&zombie_mtx);
+    if (zombie_tail) zombie_tail->next_zombie = h;
+    else             zombie_head = h;
+    zombie_tail = h;
+    /* the list is in release order: take the ones past their grace period */
+    while (zombie_head && now.tv_sec - zombie_head->released.tv_sec > ZOMBIE_GRACE_S)
+    {
+        compat_handle *z = zombie_head;
+        zombie_head = z->next_zombie;
+        if (!zombie_head) zombie_tail = NULL;
+        z->next_zombie = reap;
+        reap = z;
+    }
+    pthread_mutex_unlock(&zombie_mtx);
+    while (reap)
+    {
+        compat_handle *z = reap;
+        reap = z->next_zombie;
+        free_handle(z);
+    }
 }
 
 /* Drop one reference.  Like a Windows kernel object, a handle stays alive
@@ -155,7 +199,7 @@ BOOL ReleaseSemaphore(HANDLE hh, LONG count, LONG *previous)
     if (!h || h->type != H_SEMAPHORE) return FALSE;
     pthread_mutex_lock(&h->mtx);
     if (previous) *previous = h->count;
-    if (count <= 0 || h->count + count > h->maximum)
+    if (h->closed || count <= 0 || h->count + count > h->maximum)
         ok = FALSE;
     else
     {
@@ -183,6 +227,7 @@ BOOL SetEvent(HANDLE hh)
     compat_handle *h = (compat_handle *)hh;
     if (!h || (h->type != H_EVENT && h->type != H_WSAEVENT)) return FALSE;
     pthread_mutex_lock(&h->mtx);
+    if (h->closed) { pthread_mutex_unlock(&h->mtx); return FALSE; }
     h->signaled = 1;
     if (h->manual_reset) pthread_cond_broadcast(&h->cond);
     else                 pthread_cond_signal(&h->cond);
@@ -276,6 +321,11 @@ DWORD WaitForSingleObject(HANDLE hh, DWORD ms)
     if (ms != INFINITE) abs_deadline(&deadline, ms);
 
     pthread_mutex_lock(&h->mtx);
+    if (h->closed)                          /* invalid handle, as on Windows */
+    {
+        pthread_mutex_unlock(&h->mtx);
+        return WAIT_FAILED;
+    }
     h->refs++;                              /* keep the object alive while we wait */
     switch (h->type)
     {
@@ -381,8 +431,11 @@ DWORD WaitForMultipleObjects(DWORD n, const HANDLE *h, BOOL wait_all, DWORD ms)
         for (;;)
         {
             for (i = 0; i < n; i++)
-                if (WaitForSingleObject(h[i], 0) == WAIT_OBJECT_0)
-                    return WAIT_OBJECT_0 + i;
+            {
+                DWORD r = WaitForSingleObject(h[i], 0);
+                if (r == WAIT_OBJECT_0) return WAIT_OBJECT_0 + i;
+                if (r == WAIT_FAILED)   return WAIT_FAILED;
+            }
             if (ms != INFINITE)
             {
                 long elapsed;
@@ -400,6 +453,10 @@ BOOL CloseHandle(HANDLE hh)
     compat_handle *h = (compat_handle *)hh;
     if (!h) return FALSE;
     if (h->type == H_PSEUDO) return TRUE;
+    pthread_mutex_lock(&h->mtx);
+    if (h->closed) { pthread_mutex_unlock(&h->mtx); return FALSE; }
+    h->closed = 1;
+    pthread_mutex_unlock(&h->mtx);
     release_handle(h);
     return TRUE;
 }

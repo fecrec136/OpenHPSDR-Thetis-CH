@@ -19,5 +19,6 @@
     <Compile Include="$(ConsoleDir)clsHardwareSpecific.cs" Link="Upstream/clsHardwareSpecific.cs" />
     <Compile Include="$(ConsoleDir)HPSDR/NetworkIOImports.cs" Link="Upstream/NetworkIOImports.cs" />
     <Compile Include="$(ConsoleDir)HPSDR/specHPSDR.cs" Link="Upstream/specHPSDR.cs" />
+    <Compile Include="$(ConsoleDir)HPSDR/Penny.cs" Link="Upstream/Penny.cs" />
   </ItemGroup>
 </Project>

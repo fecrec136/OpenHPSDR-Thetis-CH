@@ -36,7 +36,7 @@ namespace Thetis.Radio
             $"{Info.DeviceType} {Info.IpAddress} ({(Info.Protocol == RadioDiscoveryRadioProtocol.P2 ? "P2" : "P1")}, fw {Info.CodeVersion}){(Info.IsBusy ? " [busy]" : "")}";
     }
 
-    public sealed unsafe class RadioController : IDisposable
+    public sealed unsafe partial class RadioController : IDisposable
     {
         public const int MaxPixels = 16384;             // dMAX_PIXELS in wdsp/comm.h
         public static readonly int[] SampleRates = { 48000, 96000, 192000, 384000 };
@@ -207,6 +207,7 @@ namespace Thetis.Radio
             NetworkIO.CurrentRadioProtocol = ri.Protocol == RadioDiscoveryRadioProtocol.P1 ? RadioProtocol.USB : RadioProtocol.ETH;
             HardwareSpecific.Model = model;             // pushes model-specific settings into ChannelMaster
             cmaster.CMLoadRouterAll(model);             // how incoming DDC streams are routed to receivers
+            BandFilters.UseN2adrFilterBoard(model == HPSDRModel.HERMESLITE && Hl2N2adrFilterBoard);
             NetworkIO.SetADC_cntrl_P1(DdcSetup.RxAdcCtrlP1);
 
             Report($"Connecting to {ri.IpAddress}...");
@@ -244,6 +245,8 @@ namespace Thetis.Radio
             }
 
             ApplyDsp();
+            ApplyTxDsp();
+            ApplyVacBypass();
             WDSP.SetChannelState(WDSP.id(0, 0), 1, 1);
             cmaster.SetRunPanadapter(0, true);
             lock (_specLock) _spec.initAnalyzer();
@@ -252,6 +255,7 @@ namespace Thetis.Radio
             ConnectedRadio = ri;
 
             if (_vacEnabled) StartVac();
+            StartTxSupervisor();
             Report($"Connected to {ri.DeviceType} at {ri.IpAddress}");
             return true;
         }
@@ -259,6 +263,11 @@ namespace Thetis.Radio
         public void Stop()
         {
             if (!_powerOn) return;
+            StopTxSupervisor();
+            lock (_txLock)
+            {
+                if (_mox) KeyDown();            // never leave the radio transmitting
+            }
             _powerOn = false;
             if (NetworkIO.getHaveSync() != 0)
                 WDSP.SetChannelState(WDSP.id(0, 0), 0, 1);
@@ -282,16 +291,50 @@ namespace Thetis.Radio
             set
             {
                 if (value < 0.0 || value > 61.44) return;
-                _frequencyMHz = value;
-                if (_powerOn) SendFrequency();
+                lock (_txLock)
+                {
+                    double old = _frequencyMHz;
+                    _frequencyMHz = value;
+                    if (!_powerOn) return;
+                    SendFrequency();
+                    if (_mox)
+                    {
+                        // Retuning while transmitting is allowed inside the same band and
+                        // allocation (the filters stay the same); anything else unkeys.
+                        bool sameBand = BandPlanRegions.BandFromFrequency(old) == BandPlanRegions.BandFromFrequency(value);
+                        if (sameBand && WhyTxRefused(_tuning) == null)
+                        {
+                            double txMHz = TxDdsMHz(_tuning);
+                            NetworkIO.VFOfreq(0, txMHz, 1);
+                            BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, txMHz, true, _tuning);
+                        }
+                        else
+                        {
+                            KeyDown();
+                            TxRefused?.Invoke("Transmit stopped: the new frequency is outside the band being transmitted on.");
+                        }
+                    }
+                }
             }
         }
 
+        /// <summary>
+        /// console UpdateRX1DDSFreq + UpdateTXDDSFreq: receive DDCs, the TX
+        /// frequency, and the band filters for the new frequency.
+        /// </summary>
         private void SendFrequency()
         {
             foreach (int ddc in DdcSetup.Rx1FrequencyDdcs(_model))
                 NetworkIO.VFOfreq(ddc, _frequencyMHz, 0);
+            if (!_mox)
+            {
+                NetworkIO.VFOfreq(0, _frequencyMHz, 1);
+                BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, _frequencyMHz, false, false);
+            }
         }
+
+        /// <summary>Hermes-Lite 2 with the N2ADR filter board: drive its relays from the OC outputs.</summary>
+        public bool Hl2N2adrFilterBoard { get; set; }
 
         public DSPMode Mode
         {
@@ -303,7 +346,15 @@ namespace Thetis.Radio
                 var presets = FilterPresets.For(value);
                 _filter = presets[Math.Min(FilterPresets.DefaultIndex, presets.Count - 1)];
                 Display.RX1DSPMode = value;
-                if (_powerOn) { ApplyDspRate(); ApplyDsp(); }
+                lock (_txLock)
+                {
+                    if (_mox)
+                    {
+                        KeyDown();
+                        TxRefused?.Invoke("Transmit stopped: mode changed while transmitting.");
+                    }
+                    if (_powerOn) { ApplyDspRate(); ApplyDsp(); ApplyTxDsp(); }
+                }
             }
         }
 
