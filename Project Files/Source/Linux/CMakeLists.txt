@@ -152,7 +152,8 @@ target_link_libraries(ChannelMaster PRIVATE
 target_link_options(ChannelMaster PRIVATE -Wl,--no-undefined)
 # version.c includes Console/Versions.cs, a C#/C polyglot keyed on WIN32
 set_source_files_properties("${SRC_DIR}/ChannelMaster/version.c" PROPERTIES COMPILE_DEFINITIONS WIN32)
-set_target_properties(ChannelMaster PROPERTIES BUILD_RPATH "\$ORIGIN" INSTALL_RPATH "\$ORIGIN")
+# exactly $ORIGIN (no build-tree path): wdsp and PA19 are always next to it
+set_target_properties(ChannelMaster PROPERTIES BUILD_WITH_INSTALL_RPATH ON INSTALL_RPATH "\$ORIGIN")
 
 # --------------------------------------------------------------------------
 # tests

@@ -1,0 +1,46 @@
+#!/bin/sh
+# AppImage entry point for Thetis.
+#
+# The application and its native libraries live in usr/lib/thetis.  FFTW is
+# bundled in usr/lib/thetis/lib.  ALSA and PulseAudio come from the system,
+# because they must match its sound configuration.  A bundled JACK client
+# library is used only when the system has none, because a JACK client must
+# match the system's JACK (or PipeWire-JACK) server.
+
+HERE="$(dirname "$(readlink -f "$0")")"
+APP="$HERE/usr/lib/thetis"
+
+have_lib() {
+    for d in /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /lib64 /usr/lib64 /usr/lib; do
+        for f in "$d"/$1; do [ -e "$f" ] && return 0; done
+    done
+    return 1
+}
+
+glibc_at_least() {   # major minor
+    v="$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc //')"
+    [ -n "$v" ] || return 1
+    maj="${v%%.*}"; min="${v#*.}"; min="${min%%.*}"
+    [ "$maj" -gt "$1" ] || { [ "$maj" -eq "$1" ] && [ "$min" -ge "$2" ]; }
+}
+
+libs="$APP/lib"
+if ! have_lib 'libjack.so.0*'; then
+    if glibc_at_least 2 38; then
+        libs="$libs:$APP/lib-fallback"
+    else
+        echo "Thetis: the JACK client library is missing. Install it with" >&2
+        echo "    sudo apt install libjack-jackd2-0" >&2
+        command -v notify-send >/dev/null 2>&1 && \
+            notify-send -i dialog-error "Thetis" "Missing library. Install it with: sudo apt install libjack-jackd2-0"
+        exit 1
+    fi
+fi
+export LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# .NET needs ICU for culture data; run without it rather than not at all
+if ! have_lib 'libicuuc.so.*'; then
+    export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+fi
+
+exec "$APP/thetis" "$@"

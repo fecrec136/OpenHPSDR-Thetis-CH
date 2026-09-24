@@ -43,6 +43,18 @@ GNU General Public License for more details.
 #include <arpa/inet.h>
 #include <sys/select.h>
 
+/* glibc 2.38+ maps the scanf family to new __isoc23_* symbols whenever
+   _GNU_SOURCE is defined, which would make the libraries require glibc 2.38
+   (Ubuntu 24.04 / Linux Mint 22) for no benefit: the C23 variants only add
+   "%b" binary input, which Thetis does not use.  Binding to the C99 entry
+   points keeps the libraries loadable on glibc 2.34+ (Linux Mint 21). */
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 38))
+extern int __isoc99_fscanf(FILE *, const char *, ...);
+extern int __isoc99_sscanf(const char *, const char *, ...);
+#define fscanf __isoc99_fscanf
+#define sscanf __isoc99_sscanf
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

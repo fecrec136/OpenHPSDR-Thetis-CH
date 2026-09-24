@@ -8,7 +8,53 @@ in stages:
 | 1 | Native libraries: `wdsp`, `ChannelMaster`, `PA19` (PortAudio) | **Done**: builds and passes tests |
 | 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
 | 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
-| 4 | PureSignal, CW keyer, full setup, CAT/TCI, meters, RX2, skins | Not started |
+| 4 | PureSignal, full setup, CAT/TCI, meters, RX2, skins | Not started |
+
+## AppImage: run without installing
+
+One file that contains the application, the .NET runtime and the native
+libraries:
+
+```sh
+chmod +x Thetis-*-x86_64.AppImage
+./Thetis-*-x86_64.AppImage
+```
+
+It runs on **Linux Mint 22** (Ubuntu 24.04) and **Linux Mint 21** (Ubuntu
+22.04), 64-bit x86. Nothing needs to be installed on Mint 22. On Mint 21,
+if the JACK client library is missing, the AppImage says so and names the
+package: `sudo apt install libjack-jackd2-0`. Settings, FFT wisdom and
+caches go to `~/.config/thetis-linux` and `~/.local/share/thetis-linux`, as
+with the installed version.
+
+What is inside, and why:
+
+* The self-contained .NET 8 application and Avalonia, with the `wdsp`,
+  `ChannelMaster` and `PA19` libraries next to it.
+* FFTW (`libfftw3`, `libfftw3f`), which a desktop system usually lacks.
+* ALSA and PulseAudio are **not** bundled. They are always present on a
+  desktop and have to match its sound configuration.
+* The JACK client library has to match the system's JACK or PipeWire-JACK
+  server, so the system's copy is used. A bundled copy is used only when the
+  system has none (Mint 22 and later).
+* If ICU is missing, .NET runs in invariant-culture mode instead of failing.
+
+To build it (after `./build.sh --deps`):
+
+```sh
+./build.sh --appimage     # -> dist/Thetis-<date>-<commit>-x86_64.AppImage
+```
+
+`packaging/build-appimage.sh` uses `appimagetool` from `PATH`, or downloads
+it and the AppImage runtime the first time. The native libraries require
+only glibc 2.34. glibc 2.38 would otherwise bind `fscanf` to its new C23
+variant, so the compat header binds the C99 one; the two differ only in
+`%b` input, which is not used.
+
+The AppImage was tested in clean Ubuntu 22.04 and 24.04 root filesystems
+that had only desktop libraries (X11, fontconfig, ALSA, PulseAudio, ICU),
+with no FFTW, JACK or .NET. On both it connected to the radio simulator,
+received, and transmitted with TUNE.
 
 ## Quick start (Linux Mint 22)
 
@@ -277,6 +323,7 @@ The transmit code follows the Windows console:
 
 Safety features added on top of the Windows behaviour:
 
+* CW modes can only TUNE: there is no CW keyer.
 * Transmitting is **off** until you tick *Allow transmitting* **and** choose
   your region. The choices are IARU Region 1, 2 or 3, or United States.
 * Everything transmitted must fall inside one amateur allocation for that
@@ -316,7 +363,7 @@ with OpenHPSDR hardware.
 
 ### Not yet ported
 
-The CW keyer (CW modes can only TUNE), PureSignal, EER, VOX, the TX
+PureSignal, EER, VOX, the TX
 equaliser, compressor and CFC controls, two-tone, transverters, diversity,
 RX2 and the sub-receiver, the rest of the setup form (calibration, per-band
 PA gain, relay band edges, ADC assignment, antenna selection, attenuator and

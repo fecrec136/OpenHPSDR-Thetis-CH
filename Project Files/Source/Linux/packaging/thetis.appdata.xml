@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>thetis</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Thetis</name>
+  <summary>OpenHPSDR software-defined radio console</summary>
+  <description>
+    <p>
+      Linux version of Thetis, the SDR console for OpenHPSDR radios
+      (Apache Labs ANAN, Hermes, Hermes-Lite 2): receive with panadapter and
+      waterfall, and transmit with band filters, SWR protection and
+      band-plan limits.
+    </p>
+  </description>
+  <launchable type="desktop-id">thetis.desktop</launchable>
+  <categories>
+    <category>HamRadio</category>
+  </categories>
+</component>
