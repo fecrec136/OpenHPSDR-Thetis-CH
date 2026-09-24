@@ -80,6 +80,8 @@ namespace Thetis.Radio
             int ooo0 = NetworkIO.getOOO();
             NetworkIO.getAndResetADC_Overload();
             long s0 = p1 ? NetworkIO.getP1RxSamples() : 0;
+            long vacFrames0 = _vacRunning ? VacDiag.Frames(0) : 0;
+            int xrunOut0 = VacDiag.Xruns(0, true), xrunIn0 = VacDiag.Xruns(0, false);
             var sw = Stopwatch.StartNew();
             float[] pix = new float[SpectrumPixels];
             int frames = 0;
@@ -91,7 +93,7 @@ namespace Thetis.Radio
             while (sw.Elapsed.TotalSeconds < seconds)
             {
                 Thread.Sleep(100);
-                float s = WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.SIGNAL_STRENGTH);
+                float s = SignalDbm();          // as the S-meter shows it (calibration and attenuator included)
                 float adc = WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.ADC_REAL);
                 float agc = WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.AGC_GAIN);
                 sMin = Math.Min(sMin, s); sMax = Math.Max(sMax, s);
@@ -114,6 +116,7 @@ namespace Thetis.Radio
             }
             double elapsed = sw.Elapsed.TotalSeconds;
             long s1 = p1 ? NetworkIO.getP1RxSamples() : 0;
+            long vacFrames1 = _vacRunning ? VacDiag.Frames(0) : 0;
 
             r.AppendLine();
             if (p1)
@@ -136,7 +139,7 @@ namespace Thetis.Radio
                                          $"({(RxTunedMHz + peakHz * 1e-6).ToString("0.000000", inv)} MHz)");
                 Line("Strongest in the filter", $"{atVfo:0.0} dBm");
             }
-            Line("S-meter", $"{sMin:0.0} to {sMax:0.0} dBm");
+            Line("S-meter (as shown)", $"{sMin:0.0} to {sMax:0.0} dBm");
             Line("Receiver input level", $"{adcMin:0.0} to {adcMax:0.0} dBFS" + (adcMax - adcMin < 0.01 ? "   <-- not changing: the receiver may not be running" : ""));
             Line("AGC gain", $"{agcMin:0.0} to {agcMax:0.0} dB");
             if (frames > 0 && atVfo > medians.Average() + 20 && sMax < atVfo - 20)
@@ -147,14 +150,28 @@ namespace Thetis.Radio
             Line("PC audio (VAC)", _vacRunning ? "running" : _vacEnabled ? "enabled, not running" : "off (audio goes to the radio)");
             if (_vacRunning)
             {
+                string DevName(int hostDev) =>
+                    Thetis.Audio.AudioDevices.Devices(_vacHostApi).FirstOrDefault(d => d.HostApiDeviceIndex == hostDev)?.Name ?? "device " + hostDev;
+                var api = Thetis.Audio.AudioDevices.HostApis().FirstOrDefault(h => h.Index == _vacHostApi);
+                int inDev = _vacInputDevice >= 0 ? _vacInputDevice : _vacOutputDevice;
+                Line("  sound system", api?.Name ?? "host API " + _vacHostApi);
+                Line("  speakers", DevName(_vacOutputDevice));
+                Line("  microphone", DevName(inDev) + (inDev != _vacOutputDevice ? "   <-- a different device from the speakers" : ""));
+                Line("  stream opened at", VacDiag.StreamRate(0).ToString("0", inv) + " Hz");
+                if (vacFrames1 > vacFrames0)
+                {
+                    double cb = (vacFrames1 - vacFrames0) / elapsed;
+                    Line("  device really runs at", cb.ToString("0", inv) + " frames/s" +
+                         (Math.Abs(cb - 48000) > 480 ? "   <-- not 48000: the sound device is stalling or restarting" : "   (ok)"));
+                }
+                Line("  PortAudio xruns", $"speakers {VacDiag.Xruns(0, true) - xrunOut0}, microphone {VacDiag.Xruns(0, false) - xrunIn0} (during the test)");
                 for (int type = 0; type < 2; type++)
                 {
-                    int under, over, ringsize, nring;
-                    double var;
-                    ivac.getIVACdiags(0, type, &under, &over, &var, &ringsize, &nring);
+                    var (under, over, var, nring, ringsize) = VacDiag.Diags(0, type);
                     Line(type == 0 ? "  receiver -> speakers" : "  microphone -> radio",
                          $"underflows {under}, overflows {over}, rate ratio {var.ToString("0.0000", inv)}, ring {nring}/{ringsize}");
                 }
+                r.AppendLine("  (underflow and overflow counts are since PC audio started; a rate ratio of 0.96 or 1.04 is the limit)");
             }
             return r.ToString();
         }

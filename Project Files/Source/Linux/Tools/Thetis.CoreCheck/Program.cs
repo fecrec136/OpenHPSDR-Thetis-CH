@@ -431,6 +431,50 @@ internal static class Program
     }
 
     /// <summary>
+    /// PC audio (VAC) on a real sound device: the rate the device's callback
+    /// really runs at, and VAC's ring-buffer diagnostics, over 'seconds'.
+    /// </summary>
+    private static int VacCheck(RadioController radio, DiscoveredRadio target, string device, int seconds)
+    {
+        var alsa = Thetis.Audio.AudioDevices.HostApis().FirstOrDefault(h => h.Name.Contains("ALSA"));
+        if (alsa == null) { Console.WriteLine("no ALSA host API"); return 1; }
+        var devs = Thetis.Audio.AudioDevices.Devices(alsa.Index);
+        foreach (var d in devs) Console.WriteLine($"  device {d.HostApiDeviceIndex}: {d.Name} (in {d.MaxInputChannels}, out {d.MaxOutputChannels})");
+        var dev = devs.FirstOrDefault(d => d.Name == device) ?? devs.FirstOrDefault(d => d.Name.Contains(device));
+        if (dev == null) { Console.WriteLine("no device " + device); return 1; }
+        Console.WriteLine($"== VAC on '{dev.Name}'");
+        radio.SampleRate = 48000;
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = 7.100;
+        radio.ConfigureVac(true, alsa.Index, dev.HostApiDeviceIndex, dev.HostApiDeviceIndex);
+        if (!radio.Start(target, HPSDRModel.HERMESLITE, out string error)) { Console.WriteLine("start failed: " + error); return 1; }
+        Check(radio.VacRunning, "VAC started");
+        Thread.Sleep(2000);
+        long f0 = VacDiag.Frames(0);
+        var d0 = VacDiag.Diags(0, 0);           // the counts are cumulative: start-up fills the ring once
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Thread.Sleep(seconds * 1000);
+        double rate = (VacDiag.Frames(0) - f0) / sw.Elapsed.TotalSeconds;
+        Console.WriteLine($"  PortAudio stream rate {VacDiag.StreamRate(0):0}, callback rate {rate:0} frames/s");
+        int[] under = new int[2], over = new int[2];
+        double[] var = new double[2];
+        for (int type = 0; type < 2; type++)
+        {
+            var (u, o, v, nr, rs) = VacDiag.Diags(0, type);
+            under[type] = u; over[type] = o; var[type] = v;
+            Console.WriteLine($"  {(type == 0 ? "receiver -> device" : "device -> transmitter")}: underflows {u}, overflows {o}, ratio {v:0.0000}, ring {nr}/{rs}");
+        }
+        Console.WriteLine(radio.ReceiveDiagnostics(5));
+        Check(Math.Abs(rate - 48000) < 480, $"sound device runs at 48 kHz (measured {rate:0})");
+        var d1 = VacDiag.Diags(0, 0);
+        int dOver = d1.overflows - d0.overflows, dUnder = d1.underflows - d0.underflows;
+        // a few while the rate matcher settles after start-up; a fault drops hundreds a second
+        Check(dOver + dUnder < (seconds + 5) / 2, $"receiver audio flows without dropping while running (underflows {dUnder}, overflows {dOver} in {seconds + 5} s)");
+        radio.Stop();
+        return _failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
     /// Receive with every Protocol 1 model at each sample rate: the S-meter,
     /// the spectrum peak and the demodulated tone must all agree with the
     /// carrier, before and after a retune (display and audio on the same DDC).
@@ -524,6 +568,10 @@ internal static class Program
         if (found.Count == 0) return 1;
         var target = found.FirstOrDefault(r => r.Nic.IsLoopbackLocal) ?? found[0];
         Check(target.Info.DeviceType == HPSDRHW.Hermes, "board reported as Hermes");
+
+        int vac = Array.IndexOf(args, "--vac");
+        if (vac >= 0)
+            return VacCheck(radio, target, args[vac + 1], args.Length > vac + 2 ? int.Parse(args[vac + 2]) : 10);
 
         int matrix = Array.IndexOf(args, "--rx-matrix");
         if (matrix >= 0)

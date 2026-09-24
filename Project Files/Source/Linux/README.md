@@ -332,7 +332,9 @@ seconds and reports:
 * out-of-order packets and ADC overload
 * the strongest signal on the panadapter and in the filter
 * the S-meter, the receiver's input level and the AGC gain
-* the PC audio buffers (underflows, overflows, rate ratio)
+* the PC audio: the sound system and both devices, the rate the device
+  really runs at, PortAudio xruns, and VAC's buffers (underflows,
+  overflows, rate ratio)
 
 It flags readings that disagree: a rate the radio did not take, a receiver
 that is not running, or a signal in the filter that the S-meter does not
@@ -383,7 +385,10 @@ interface. `thetis-corecheck ... --rx-matrix [MODEL...]` receives with every
 Protocol 1 model at 48, 192 and 384 kHz. The S-meter, the spectrum peak and
 the demodulated tone must agree with the carrier before and after a retune.
 All 96 checks pass (the HPSDR/Atlas model is not meaningful against a
-simulated Hermes board). `thetis-corecheck ... --stress-tx 40` powers on, keys TUNE and
+simulated Hermes board). `thetis-corecheck ... --vac <ALSA device> [seconds]` runs PC audio on
+a real sound device and checks the rate it runs at and that the receiver
+audio does not drop. Tested with PulseAudio's null sink through the ALSA
+`default` device. `thetis-corecheck ... --stress-tx 40` powers on, keys TUNE and
 powers off 40 times at random intervals.
 
 **Not yet tested:** a real radio, and Protocol 2. The simulator speaks

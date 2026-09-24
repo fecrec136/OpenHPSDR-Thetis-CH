@@ -193,6 +193,30 @@ void xvac_out(int id, int nsamples, double* buff)
 //	return 0;
 //}
 
+// Frames the sound device has asked for, per VAC: the host divides the
+// increase by the time to see the rate the device really runs at.
+static volatile long long ivac_frames[2];
+// Callbacks where PortAudio reported trouble: [id][0] input under/overflow
+// (the microphone side), [id][1] output under/overflow (the speaker side).
+static volatile long ivac_xruns[2][2];
+
+PORT long getIVACxruns(int id, int output)
+{
+	return ivac_xruns[id & 1][output ? 1 : 0];
+}
+
+PORT long long getIVACframes(int id)
+{
+	return ivac_frames[id & 1];
+}
+
+PORT double getIVACstreamRate(int id)
+{
+	IVAC a = pvac[id];
+	const PaStreamInfo* info = a->Stream ? Pa_GetStreamInfo(a->Stream) : NULL;
+	return info ? info->sampleRate : 0.0;
+}
+
 int CallbackIVAC(const void* input,
 	void* output,
 	unsigned long frameCount,
@@ -202,6 +226,9 @@ int CallbackIVAC(const void* input,
 {
 	int id = (int)userData;
 	IVAC a = pvac[id];
+	ivac_frames[id & 1] += frameCount;
+	if (statusFlags & (paInputUnderflow | paInputOverflow)) ivac_xruns[id & 1][0]++;
+	if (statusFlags & (paOutputUnderflow | paOutputOverflow)) ivac_xruns[id & 1][1]++;
 	double* out_ptr = (double*)output;
 	double* in_ptr = (double*)input;
 	(void)timeInfo;
