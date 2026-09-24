@@ -57,6 +57,7 @@ warren@wpratt.com
 #include "emnr.h"
 #include "rnnr.h" // NR3 + NR4 support
 #include "sbnr.h" // NR3 + NR4 support
+#include "extnr.h" // external NR (AetherSDR NR2/RN2/NR4/DFNR on Linux)
 #include "emph.h"
 #include "eq.h"
 #include "fcurve.h"

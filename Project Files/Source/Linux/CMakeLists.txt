@@ -4,6 +4,8 @@
 #   libChannelMaster.so  - radio protocol 1/2 networking, audio routing, VAC
 #   libPA19.so           - Thetis' PortAudio fork + the PA_* wrappers used by
 #                          the C# console (the Windows PA19.dll)
+#   libaethernr.so       - AetherSDR's NR2, RN2, NR4 and DFNR noise reduction,
+#                          run in the WDSP receive chain by wdsp/extnr.c
 #
 # rnnoise (NR3) and libspecbleach (NR4) are built from the sources bundled in
 # "Project Files/lib/NR_Algorithms_x64/src" and linked in statically.
@@ -156,9 +158,87 @@ set_source_files_properties("${SRC_DIR}/ChannelMaster/version.c" PROPERTIES COMP
 set_target_properties(ChannelMaster PROPERTIES BUILD_WITH_INSTALL_RPATH ON INSTALL_RPATH "\$ORIGIN")
 
 # --------------------------------------------------------------------------
+# libaethernr: AetherSDR's receive noise reduction (NR2, RN2, NR4, DFNR) for
+# the WDSP chain (wdsp/extnr.c).  GPLv3, from github.com/aethersdr/AetherSDR;
+# see ../AetherNR/README.md.
+#
+# Its libspecbleach is a newer snapshot than the one inside libwdsp (same
+# function names, different structures), and both libraries carry rnnoise:
+# everything but the aethernr_* API is hidden and bound locally
+# (-Bsymbolic, --exclude-libs) so neither library can reach the other's copy.
+# --------------------------------------------------------------------------
+set(AETHERNR_DIR "${SRC_DIR}/AetherNR")
+find_package(ZLIB REQUIRED)
+file(GLOB_RECURSE AETHER_SPECBLEACH_SRCS "${AETHERNR_DIR}/third_party/libspecbleach/src/*.c")
+add_library(aether_specbleach STATIC ${AETHER_SPECBLEACH_SRCS})
+target_include_directories(aether_specbleach
+  PUBLIC "${AETHERNR_DIR}/third_party/libspecbleach/include"
+  PRIVATE "${AETHERNR_DIR}/third_party/libspecbleach/src")
+target_compile_options(aether_specbleach PRIVATE -O3 -w)
+target_link_libraries(aether_specbleach PRIVATE PkgConfig::FFTW3F m)
+
+add_library(aethernr SHARED
+  "${AETHERNR_DIR}/src/aethernr.cpp"
+  "${AETHERNR_DIR}/src/aethernr_support.cpp"
+  "${AETHERNR_DIR}/src/SpectralNR.cpp"
+  "${AETHERNR_DIR}/src/core/dsp/FftwPlannerLock.cpp")
+set_target_properties(aethernr PROPERTIES
+  CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON
+  BUILD_WITH_INSTALL_RPATH ON INSTALL_RPATH "\$ORIGIN")
+target_compile_definitions(aethernr PRIVATE HAVE_FFTW3)
+target_include_directories(aethernr PRIVATE "${AETHERNR_DIR}/include" "${AETHERNR_DIR}/src")
+target_link_libraries(aethernr PRIVATE aether_specbleach rnnoise
+  PkgConfig::FFTW3 PkgConfig::FFTW3F ZLIB::ZLIB Threads::Threads m)
+target_link_options(aethernr PRIVATE -Wl,--no-undefined -Wl,-Bsymbolic -Wl,--exclude-libs,ALL)
+
+# DFNR: DeepFilterNet3 (MIT / Apache-2.0).  Its C library is a Rust build;
+# the static library and model are fetched from AetherSDR's repository at a
+# pinned commit and checked against known hashes.
+option(THETIS_DFNR "Build DFNR (DeepFilterNet3) into libaethernr" ON)
+set(AETHERSDR_COMMIT "2859fdef4c5121fe0d18f5d08f819ecbd9b33fc3")
+set(DFNR_DIR "${CMAKE_BINARY_DIR}/deepfilter")
+set(DFNR_LIB "${DFNR_DIR}/libdeepfilter.a")
+set(DFNR_MODEL "${DFNR_DIR}/DeepFilterNet3_onnx.tar.gz")
+if(THETIS_DFNR AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  set(_aether_raw "https://raw.githubusercontent.com/aethersdr/AetherSDR/${AETHERSDR_COMMIT}/third_party/deepfilter")
+  foreach(_f IN ITEMS
+      "lib/linux-x86_64/libdeepfilter.a|${DFNR_LIB}|b58a99e7764fbeb56b85132ab92276065824cd2d1d41d82e3041735b18e0b292"
+      "models/DeepFilterNet3_onnx.tar.gz|${DFNR_MODEL}|c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616")
+    string(REPLACE "|" ";" _parts "${_f}")
+    list(GET _parts 0 _src)
+    list(GET _parts 1 _dst)
+    list(GET _parts 2 _hash)
+    if(NOT EXISTS "${_dst}")
+      message(STATUS "DFNR: downloading ${_src}")
+      file(DOWNLOAD "${_aether_raw}/${_src}" "${_dst}.part" EXPECTED_HASH SHA256=${_hash}
+           STATUS _st TLS_VERIFY ON)
+      list(GET _st 0 _rc)
+      if(_rc EQUAL 0)
+        file(RENAME "${_dst}.part" "${_dst}")
+      else()
+        file(REMOVE "${_dst}.part")
+        message(WARNING "DFNR: could not download ${_src} (${_st}); building without DFNR")
+      endif()
+    endif()
+  endforeach()
+endif()
+if(THETIS_DFNR AND EXISTS "${DFNR_LIB}" AND EXISTS "${DFNR_MODEL}")
+  target_compile_definitions(aethernr PRIVATE HAVE_DFNR)
+  target_include_directories(aethernr PRIVATE "${AETHERNR_DIR}/third_party/deepfilter/include")
+  target_link_libraries(aethernr PRIVATE "${DFNR_LIB}" ${CMAKE_DL_LIBS} rt)
+  add_custom_command(TARGET aethernr POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DFNR_MODEL}" "$<TARGET_FILE_DIR:aethernr>/DeepFilterNet3_onnx.tar.gz")
+  message(STATUS "DFNR (DeepFilterNet3): enabled")
+else()
+  message(STATUS "DFNR (DeepFilterNet3): disabled")
+endif()
+
+# --------------------------------------------------------------------------
 # tests
 #   compat_test : unit tests for the Win32 compatibility layer
 #   smoketest   : loads the three libraries and runs a wdsp receive channel
+#   aethernr    : NR2, RN2, NR4 and DFNR reduce noise and keep the signal
 # --------------------------------------------------------------------------
 enable_testing()
 add_executable(compat_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/compat_test.c")
@@ -170,11 +250,15 @@ target_link_libraries(thetis_smoketest PRIVATE ${CMAKE_DL_LIBS} m)
 add_test(NAME smoketest COMMAND thetis_smoketest
   $<TARGET_FILE:wdsp> $<TARGET_FILE:ChannelMaster> $<TARGET_FILE:PA19>)
 
+add_executable(aethernr_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/aethernr_test.c")
+target_link_libraries(aethernr_test PRIVATE ${CMAKE_DL_LIBS} m)
+add_test(NAME aethernr COMMAND aethernr_test $<TARGET_FILE:aethernr> $<TARGET_FILE_DIR:aethernr>)
+
 # Some C# declarations import "WDSP.dll" rather than "wdsp.dll"; Linux file
 # names are case-sensitive, so provide the upper-case alias as well.
 add_custom_command(TARGET wdsp POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E create_symlink libwdsp.so "$<TARGET_FILE_DIR:wdsp>/libWDSP.so")
 
 include(GNUInstallDirs)
-install(TARGETS wdsp ChannelMaster PA19 LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/thetis)
+install(TARGETS wdsp ChannelMaster PA19 aethernr LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/thetis)
 install(FILES "$<TARGET_FILE_DIR:wdsp>/libWDSP.so" DESTINATION ${CMAKE_INSTALL_LIBDIR}/thetis)

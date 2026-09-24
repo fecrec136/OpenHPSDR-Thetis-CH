@@ -39,7 +39,7 @@ copy_lib libfftw3f.so.3 "$appdir/usr/lib/thetis/lib"
 copy_lib libjack.so.0   "$appdir/usr/lib/thetis/lib-fallback"
 copy_lib libdb-5.3.so   "$appdir/usr/lib/thetis/lib-fallback"
 # drop symbol tables (the native libraries are built without debug info)
-strip --strip-unneeded "$appdir"/usr/lib/thetis/lib{wdsp,ChannelMaster,PA19}.so \
+strip --strip-unneeded "$appdir"/usr/lib/thetis/lib{wdsp,ChannelMaster,PA19,aethernr}.so \
     "$appdir"/usr/lib/thetis/lib/*.so.* "$appdir"/usr/lib/thetis/lib-fallback/*.so*
 # .NET debugger support libraries: not needed to run
 rm -f "$appdir"/usr/lib/thetis/{libmscordaccore.so,libmscordbi.so,createdump} "$appdir"/usr/lib/thetis/*.pdb

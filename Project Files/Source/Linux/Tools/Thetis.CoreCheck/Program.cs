@@ -167,6 +167,55 @@ internal static class Program
         Check(s1.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, "defaults restored");
     }
 
+    /// <summary>AetherSDR's NR2 / RN2 / NR4 / DFNR in the WDSP receive chain.</summary>
+    private static void NoiseReduction(RadioController radio, string statusFile, double tuneMHz)
+    {
+        Console.WriteLine("== noise reduction (AetherSDR NR2, RN2, NR4, DFNR)");
+        Check(AetherNr.Loaded, "libaethernr loaded and registered with WDSP" + (AetherNr.Loaded ? "" : ": " + AetherNr.Error));
+        if (!AetherNr.Loaded) return;
+        radio.Mode = DSPMode.USB;
+        radio.Agc = AGCMode.MED;
+        radio.FrequencyMHz = 7.150;                 // no carrier here: the audio is noise lifted by AGC
+        Thread.Sleep(3000);
+        double baseline = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Console.WriteLine($"  noise audio without NR: {baseline:F1} dBFS");
+        foreach (NrType t in new[] { NrType.NR2, NrType.RN2, NrType.DFNR })
+        {
+            radio.NoiseReductionType = t;
+            Thread.Sleep(3500);                     // filters settle; the simulator averages 0.5 s
+            double level = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+            Check(radio.NoiseReductionActive && baseline - level >= 10.0,
+                  $"{t}: running, noise audio {level:F1} dBFS ({baseline - level:F1} dB lower)");
+        }
+        // NR4 is gentle by default (at most 10 dB), less than the make-up gain WDSP
+        // adds to its band-pass stage whenever any noise reduction runs, so compare
+        // NR4 at its default against NR4 with its reduction set to 0 dB.
+        radio.SetNoiseReductionParam(NrParam.Nr4ReductionDb, 0);
+        radio.NoiseReductionType = NrType.NR4;
+        Thread.Sleep(3500);
+        double nr4Zero = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        radio.SetNoiseReductionParam(NrParam.Nr4ReductionDb, 10);
+        Thread.Sleep(3000);
+        double nr4 = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(radio.NoiseReductionActive && nr4Zero - nr4 >= 4.0,
+              $"NR4: running, 10 dB setting lowers the noise audio {nr4Zero - nr4:F1} dB against 0 dB ({nr4:F1} dBFS)");
+
+        radio.Mode = DSPMode.FM;                    // FM runs the receiver at 192 kHz
+        radio.NoiseReductionType = NrType.RN2;
+        Thread.Sleep(1000);
+        Check(!radio.NoiseReductionActive, "RN2 does not run in FM (192 kHz); audio passes unchanged");
+        radio.NoiseReductionType = NrType.NR2;
+        Thread.Sleep(1000);
+        Check(radio.NoiseReductionActive, "NR2 runs in FM");
+        radio.NoiseReductionType = NrType.Off;
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = tuneMHz;
+        Thread.Sleep(2500);
+        double back = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(Math.Abs(SimStatus(statusFile).GetProperty("audio_peak_hz").GetDouble() - (tuneMHz == 7.1 ? 1500 : 0)) <= 50 && back > -40,
+              $"NR off: carrier demodulated again ({back:F1} dBFS)");
+    }
+
     private static void Transmit(RadioController radio, string statusFile, double tuneMHz)
     {
         string refused = null;
@@ -414,6 +463,7 @@ internal static class Program
 
         File.Delete(statusFile + ".ctl");
         Setup(radio, statusFile, tuneMHz);
+        NoiseReduction(radio, statusFile, tuneMHz);
         Transmit(radio, statusFile, tuneMHz);
         bool keyed = radio.Mox;
         radio.Stop();

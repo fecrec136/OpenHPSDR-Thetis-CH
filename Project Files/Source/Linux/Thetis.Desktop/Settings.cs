@@ -39,7 +39,12 @@ namespace Thetis.Desktop
         public double Volume { get; set; } = 0.5;
         public int SampleRate { get; set; } = 192000;
         public int TuneStepHz { get; set; } = 100;
+        /// <summary>Old setting (WDSP's EMNR on/off); read once and turned into NoiseReductionType.</summary>
         public bool NoiseReduction { get; set; }
+        /// <summary>Receive noise reduction: AetherSDR's NR2, RN2, NR4 or DFNR.</summary>
+        public NrType NoiseReductionType { get; set; } = NrType.Off;
+        /// <summary>Noise reduction settings changed from their defaults.</summary>
+        public Dictionary<NrParam, double> NrParams { get; set; } = new Dictionary<NrParam, double>();
         public bool AutoNotch { get; set; }
 
         public string LastRadioMac { get; set; }

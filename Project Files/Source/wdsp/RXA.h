@@ -177,6 +177,10 @@ struct _rxa
     {
         SBNR p; // NR3 + NR4 support (nr4)
     } sbnr;
+	struct
+	{
+		EXTNR p;	// external NR (extnr.c)
+	} extnr;
 
 	struct
 	{

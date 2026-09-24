@@ -53,6 +53,7 @@ namespace Thetis.Desktop
 
             var tabs = new TabControl { Margin = new Thickness(6) };
             tabs.Items.Add(new TabItem { Header = "Receive", Content = Scroll(ReceiveTab()) });
+            tabs.Items.Add(new TabItem { Header = "Noise reduction", Content = Scroll(NoiseTab()) });
             tabs.Items.Add(new TabItem { Header = "PA gain", Content = Scroll(PaTab()) });
             tabs.Items.Add(new TabItem { Header = "Filters", Content = Scroll(FiltersTab()) });
             tabs.Items.Add(new TabItem { Header = "Antennas", Content = Scroll(AntennaTab()) });
@@ -182,6 +183,136 @@ namespace Thetis.Desktop
             _meterBox.Value = (decimal)MeterOffset;
             _displayBox.Value = (decimal)DisplayOffset;
             _building = false;
+        }
+
+        #endregion
+
+        #region noise reduction
+
+        // AetherSDR's defaults (Nr2SettingsModel, Rn2SettingsModel, SpecbleachFilter, DeepFilterFilter)
+        private static readonly Dictionary<NrParam, double> NrDefaults = new Dictionary<NrParam, double>
+        {
+            { NrParam.Nr2GainMethod, 2 }, { NrParam.Nr2NpeMethod, 0 }, { NrParam.Nr2AeFilter, 1 },
+            { NrParam.Nr2GainMax, 1.0 }, { NrParam.Nr2GainFloor, 0.0 }, { NrParam.Nr2GainSmooth, 0.85 }, { NrParam.Nr2Qspp, 0.20 },
+            { NrParam.Nr2Post2Run, 0 }, { NrParam.Nr2Post2Factor, 0.15 }, { NrParam.Nr2Post2Nlevel, 0.15 },
+            { NrParam.Nr2Post2TaperHz, 2871 }, { NrParam.Nr2Post2DecaySeconds, 5.0 },
+            { NrParam.Rn2DryMix, 0.0 },
+            { NrParam.Nr4ReductionDb, 10 }, { NrParam.Nr4SmoothingPct, 0 }, { NrParam.Nr4WhiteningPct, 0 },
+            { NrParam.Nr4Adaptive, 1 }, { NrParam.Nr4NoiseMethod, 0 }, { NrParam.Nr4MaskingDepth, 0.5 }, { NrParam.Nr4Suppression, 0.5 },
+            { NrParam.DfnrAttenLimitDb, 100 }, { NrParam.DfnrPostFilterBeta, 0.0 },
+        };
+
+        private readonly List<(NrParam p, Control c)> _nrControls = new List<(NrParam, Control)>();
+
+        private double NrValue(NrParam p) => _settings.NrParams.TryGetValue(p, out double v) ? v : NrDefaults[p];
+
+        private void SetNr(NrParam p, double v)
+        {
+            if (_building) return;
+            if (Math.Abs(v - NrDefaults[p]) < 1e-9) _settings.NrParams.Remove(p);
+            else _settings.NrParams[p] = v;
+            _radio?.SetNoiseReductionParam(p, v);
+        }
+
+        private Control NoiseTab()
+        {
+            var p = new StackPanel { Spacing = 4 };
+            p.Children.Add(Text("The receive noise reduction filters from AetherSDR (github.com/aethersdr/AetherSDR). Choose one with " +
+                                "the Off / NR2 / RN2 / NR4 / DFNR buttons on the main window; the settings here apply at once. " +
+                                "They run after AGC, on the demodulated audio. RN2 and DFNR need 48 kHz and do not run in FM.", true));
+            if (!AetherNr.Loaded)
+                p.Children.Add(Text("The noise reduction library (libaethernr.so) is not loaded" +
+                                    (AetherNr.Error != null ? ": " + AetherNr.Error : "."), true));
+
+            var g = Grid2();
+            p.Children.Add(Heading("NR2 - spectral noise reduction"));
+            AddChoice(g, "Gain method", NrParam.Nr2GainMethod, new[] { "Linear", "Log", "Gamma", "Trained" });
+            AddChoice(g, "Noise estimate", NrParam.Nr2NpeMethod, new[] { "OSMS", "MMSE", "NSTAT" });
+            AddCheck(g, "Artifact filter", NrParam.Nr2AeFilter);
+            AddNumber(g, "Gain max", NrParam.Nr2GainMax, 0, 4, 0.05, "0.00");
+            AddNumber(g, "Gain floor", NrParam.Nr2GainFloor, 0, 1, 0.01, "0.00");
+            AddNumber(g, "Gain smoothing", NrParam.Nr2GainSmooth, 0, 0.99, 0.01, "0.00");
+            AddNumber(g, "Speech absence prior (qspp)", NrParam.Nr2Qspp, 0.01, 0.99, 0.01, "0.00");
+            AddCheck(g, "Psychoacoustic post-processing", NrParam.Nr2Post2Run);
+            AddNumber(g, "  factor", NrParam.Nr2Post2Factor, 0, 1, 0.01, "0.00");
+            AddNumber(g, "  noise level", NrParam.Nr2Post2Nlevel, 0, 1, 0.01, "0.00");
+            AddNumber(g, "  taper (Hz)", NrParam.Nr2Post2TaperHz, 0, 12000, 50, "0");
+            AddNumber(g, "  decay (s)", NrParam.Nr2Post2DecaySeconds, 0.1, 30, 0.1, "0.0");
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("RN2 - RNNoise"));
+            AddNumber(g, "Dry mix (keeps a noise floor)", NrParam.Rn2DryMix, 0, 0.5, 0.01, "0.00");
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("NR4 - libspecbleach"));
+            AddNumber(g, "Reduction (dB)", NrParam.Nr4ReductionDb, 0, 40, 1, "0");
+            AddNumber(g, "Smoothing (%)", NrParam.Nr4SmoothingPct, 0, 100, 1, "0");
+            AddNumber(g, "Whitening (%)", NrParam.Nr4WhiteningPct, 0, 100, 1, "0");
+            AddCheck(g, "Adaptive noise estimate", NrParam.Nr4Adaptive);
+            AddChoice(g, "Noise estimate", NrParam.Nr4NoiseMethod, new[] { "MMSE (SPP)", "Brandt", "Martin" });
+            AddNumber(g, "Masking depth", NrParam.Nr4MaskingDepth, 0, 1, 0.05, "0.00");
+            AddNumber(g, "Suppression strength", NrParam.Nr4Suppression, 0, 1, 0.05, "0.00");
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("DFNR - DeepFilterNet3"));
+            AddNumber(g, "Attenuation limit (dB)", NrParam.DfnrAttenLimitDb, 0, 100, 1, "0");
+            AddNumber(g, "Post-filter beta", NrParam.DfnrPostFilterBeta, 0, 0.3, 0.01, "0.00");
+            p.Children.Add(g);
+
+            var reset = new Button { Content = "Defaults", Margin = new Thickness(0, 8) };
+            reset.Click += (_, _) =>
+            {
+                _settings.NrParams.Clear();
+                foreach (var (param, v) in NrDefaults) _radio?.SetNoiseReductionParam(param, v);
+                _building = true;
+                foreach (var (param, c) in _nrControls)
+                {
+                    double v = NrDefaults[param];
+                    if (c is NumericUpDown n) n.Value = (decimal)v;
+                    else if (c is CheckBox cb) cb.IsChecked = v != 0;
+                    else if (c is ComboBox co) co.SelectedIndex = (int)v;
+                }
+                _building = false;
+            };
+            p.Children.Add(reset);
+            return p;
+        }
+
+        private static Grid Grid2() => new Grid { ColumnDefinitions = new ColumnDefinitions("260,Auto") };
+
+        private static void AddRow(Grid g, string label, Control c)
+        {
+            int r = g.RowDefinitions.Count;
+            g.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            Place(g, Text(label), r, 0);
+            Place(g, c, r, 1);
+        }
+
+        private void AddNumber(Grid g, string label, NrParam param, double min, double max, double step, string fmt)
+        {
+            var n = Number(NrValue(param), min, max, step, fmt, 130);
+            n.ValueChanged += (_, _) => SetNr(param, (double)(n.Value ?? (decimal)NrDefaults[param]));
+            AddRow(g, label, n);
+            _nrControls.Add((param, n));
+        }
+
+        private void AddCheck(Grid g, string label, NrParam param)
+        {
+            var c = new CheckBox { IsChecked = NrValue(param) != 0 };
+            c.IsCheckedChanged += (_, _) => SetNr(param, c.IsChecked == true ? 1 : 0);
+            AddRow(g, label, c);
+            _nrControls.Add((param, c));
+        }
+
+        private void AddChoice(Grid g, string label, NrParam param, string[] items)
+        {
+            var c = new ComboBox { ItemsSource = items, SelectedIndex = (int)NrValue(param), Width = 150, Margin = new Thickness(2) };
+            c.SelectionChanged += (_, _) => { if (c.SelectedIndex >= 0) SetNr(param, c.SelectedIndex); };
+            AddRow(g, label, c);
+            _nrControls.Add((param, c));
         }
 
         #endregion

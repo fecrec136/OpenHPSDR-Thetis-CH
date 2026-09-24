@@ -169,7 +169,7 @@ namespace Thetis.Desktop
                 _settings.SpectrumZoom = ZoomSlider.Value / 100.0;
                 _radio.SetSpectrumZoom(_settings.SpectrumZoom);
             };
-            NrToggle.IsCheckedChanged += (_, _) => { if (!_updating) _radio.NoiseReduction = _settings.NoiseReduction = NrToggle.IsChecked == true; };
+            BuildNoiseReductionButtons();
             AnfToggle.IsCheckedChanged += (_, _) => { if (!_updating) _radio.AutoNotch = _settings.AutoNotch = AnfToggle.IsChecked == true; };
             StepBox.SelectionChanged += (_, _) => { if (!_updating && StepBox.SelectedIndex >= 0) _settings.TuneStepHz = _steps[StepBox.SelectedIndex]; };
             SampleRateBox.SelectionChanged += (_, _) =>
@@ -291,6 +291,46 @@ namespace Thetis.Desktop
             N2adrCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.Hl2N2adrFilterBoard = _settings.Hl2N2adrFilterBoard = N2adrCheck.IsChecked == true; };
         }
 
+        #region noise reduction
+
+        private readonly Dictionary<NrType, ToggleButton> _nrButtons = new Dictionary<NrType, ToggleButton>();
+
+        private static readonly (NrType type, string tip)[] _nrTypes =
+        {
+            (NrType.Off, "No noise reduction"),
+            (NrType.NR2, "NR2: spectral noise reduction (AetherSDR's extended EMNR)"),
+            (NrType.RN2, "RN2: RNNoise neural noise reduction (not in FM)"),
+            (NrType.NR4, "NR4: libspecbleach spectral noise reduction"),
+            (NrType.DFNR, "DFNR: DeepFilterNet3 neural noise reduction (not in FM)"),
+        };
+
+        private void BuildNoiseReductionButtons()
+        {
+            foreach (var (type, tip) in _nrTypes)
+            {
+                var b = new ToggleButton { Content = type.ToString(), Classes = { "panel" } };
+                ToolTip.SetTip(b, tip);
+                b.Click += (_, _) =>
+                {
+                    _radio.NoiseReductionType = _settings.NoiseReductionType = type;
+                    RefreshNoiseReduction();
+                };
+                NrPanel.Children.Add(b);
+                _nrButtons[type] = b;
+            }
+        }
+
+        private void RefreshNoiseReduction()
+        {
+            foreach (var (type, b) in _nrButtons)
+            {
+                b.IsChecked = type == _settings.NoiseReductionType;
+                b.IsEnabled = type == NrType.Off || !_radio.DspReady || AetherNr.Available(type);
+            }
+        }
+
+        #endregion
+
         #region setup and calibration
 
         private HPSDRModel SelectedModel =>
@@ -354,7 +394,11 @@ namespace Thetis.Desktop
             _radio.Agc = _settings.Agc;
             _radio.AgcTop = _settings.AgcTop;
             _radio.Volume = _settings.Volume;
-            _radio.NoiseReduction = _settings.NoiseReduction;
+            if (_settings.NoiseReduction && _settings.NoiseReductionType == NrType.Off)
+                _settings.NoiseReductionType = NrType.NR2;      // the old NR2 toggle
+            _settings.NoiseReduction = false;
+            foreach (var (p, v) in _settings.NrParams) _radio.SetNoiseReductionParam(p, v);
+            _radio.NoiseReductionType = _settings.NoiseReductionType;
             _radio.AutoNotch = _settings.AutoNotch;
             _radio.TransmitAllowed = _settings.TransmitAllowed;
             _radio.Region = _settings.Region;
@@ -393,6 +437,7 @@ namespace Thetis.Desktop
                 if (!_radio.WisdomFileExists) poll.Start();
                 await Task.Run(() => _radio.InitializeDsp());
                 poll.Stop();
+                RefreshNoiseReduction();            // which filters the library offers
                 _radio.SetSpectrumZoom(_settings.SpectrumZoom);
                 LoadAudioDevices();
                 _timer.Start();
@@ -654,6 +699,9 @@ namespace Thetis.Desktop
             {
                 MeterText.Text = $"{RadioController.SUnits((float)Meter.Dbm),-7} {Meter.Dbm,7:0.0} dBm";
                 SyncText.Text = _radio.HaveSync ? "" : "no data from radio";
+                NoiseCaption.Text = _settings.NoiseReductionType != NrType.Off && !_radio.NoiseReductionActive
+                    ? $"Noise reduction ({_settings.NoiseReductionType} cannot run {(_radio.Mode == DSPMode.FM ? "in FM" : "here")})"
+                    : "Noise reduction";
                 RefreshTxMeters();
             }
         }
@@ -671,7 +719,7 @@ namespace Thetis.Desktop
             AgcTopSlider.Value = _settings.AgcTop;
             AgcTopCaption.Text = $"AGC gain {_settings.AgcTop:0} dB";
             ZoomSlider.Value = _settings.SpectrumZoom * 100.0;
-            NrToggle.IsChecked = _settings.NoiseReduction;
+            RefreshNoiseReduction();
             AnfToggle.IsChecked = _settings.AutoNotch;
             StepBox.SelectedIndex = Math.Max(0, Array.IndexOf(_steps, _settings.TuneStepHz));
             SampleRateBox.SelectedIndex = Math.Max(0, Array.IndexOf(RadioController.SampleRates, _settings.SampleRate));

@@ -129,6 +129,7 @@ namespace Thetis.Radio
 
             Report("Creating DSP channels...");
             cmaster.CMCreateCMaster();
+            AetherNr.Initialize();                      // NR2 / RN2 / NR4 / DFNR (optional library)
 
             _spec = new SpecHPSDR(0);
             _spec.FFTSize = 16384;
@@ -517,11 +518,47 @@ namespace Thetis.Radio
             }
         }
 
-        /// <summary>Spectral noise reduction (NR2 / EMNR).</summary>
+        /// <summary>WDSP's own spectral noise reduction (EMNR), as the Windows console's NR2.</summary>
         public bool NoiseReduction
         {
             get => _nr;
             set { _nr = value; if (_powerOn) WDSP.SetRXAEMNRRun(WDSP.id(0, 0), value ? 1 : 0); }
+        }
+
+        private NrType _nrType = NrType.Off;
+        private readonly System.Collections.Generic.Dictionary<NrParam, double> _nrParams =
+            new System.Collections.Generic.Dictionary<NrParam, double>();
+
+        /// <summary>Receive noise reduction: AetherSDR's NR2, RN2, NR4 or DFNR (off by default).</summary>
+        public NrType NoiseReductionType
+        {
+            get => _nrType;
+            set
+            {
+                _nrType = value;
+                if (_powerOn && AetherNr.Loaded) AetherNr.SetRXAExtNRRun(WDSP.id(0, 0), (int)value);
+            }
+        }
+
+        /// <summary>Change a noise reduction setting (kept, and applied to whichever filter runs).</summary>
+        public void SetNoiseReductionParam(NrParam param, double value)
+        {
+            _nrParams[param] = value;
+            if (_powerOn && AetherNr.Loaded) AetherNr.SetRXAExtNRParam(WDSP.id(0, 0), (int)param, value);
+        }
+
+        /// <summary>
+        /// True if the selected filter is actually running.  It is not if the
+        /// library or DFNR model is missing, or in FM (192 kHz) for RN2 and DFNR.
+        /// </summary>
+        public bool NoiseReductionActive =>
+            _nrType != NrType.Off && _powerOn && AetherNr.Loaded && AetherNr.GetRXAExtNRActive(WDSP.id(0, 0)) != 0;
+
+        private void ApplyNoiseReduction(int ch)
+        {
+            if (!AetherNr.Loaded) return;
+            foreach (var (p, v) in _nrParams) AetherNr.SetRXAExtNRParam(ch, (int)p, v);
+            AetherNr.SetRXAExtNRRun(ch, (int)_nrType);
         }
 
         /// <summary>Automatic notch filter.</summary>
@@ -570,6 +607,7 @@ namespace Thetis.Radio
             WDSP.SetRXAPanelGain1(ch, 1.0);
             WDSP.SetRXAEMNRRun(ch, _nr ? 1 : 0);
             WDSP.SetRXAANFRun(ch, _anf);
+            ApplyNoiseReduction(ch);
         }
 
         /// <summary>Port of the ETH branch of Setup.comboAudioSampleRate1_SelectedIndexChanged.</summary>

@@ -9,8 +9,9 @@ in stages:
 | 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
 | 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
 | 4 | Setup and calibration: attenuator, level calibration, PA gain, filter edges, antennas | **Done**: see [Setup and calibration](#setup-and-calibration) |
-| 5 | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
-| 6 | Transmit audio processing: VOX, TX equaliser, compressor, CFC | Planned |
+| 5 | WDSP 2.10, and AetherSDR's receive noise reduction: NR2, RN2, NR4, DFNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
+| 6 | Transmit audio processing: VOX, TX equaliser, compressor, CFC | In progress |
+| 6a | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
 | 7 | PureSignal | Planned |
 | 8 | RX2, sub-receiver, band stacking, more meters | Planned |
 
@@ -45,7 +46,8 @@ What is inside, and why:
   server, so the system's copy is used. A bundled copy is used only when the
   system has none (Mint 22 and later).
 * If ICU is missing, .NET runs in invariant-culture mode instead of failing.
-* Size: about 25 MB. The publish trims only the .NET framework assemblies
+* DFNR's DeepFilterNet3 runtime and model make up about 20 MB of it.
+* Size: about 45 MB. The publish trims only the .NET framework assemblies
   (`TrimMode=partial`), leaving Thetis, `Thetis.Core` and Avalonia whole;
   the settings file uses source-generated JSON, so trimming cannot affect
   it. The native libraries are stripped, and the image is compressed with
@@ -90,6 +92,7 @@ choose your region under **Transmit settings** (see [Transmit](#transmit)).
 | `libwdsp.so` (+ `libWDSP.so` alias) | `wdsp.dll` | DSP engine (NR0V), including NR3 (rnnoise) and NR4 (libspecbleach), both linked in statically |
 | `libChannelMaster.so` | `ChannelMaster.dll` | Protocol 1/2 networking, audio routing, VAC |
 | `libPA19.so` | `PA19.dll` | Thetis' PortAudio fork with the `PA_*` wrappers, using ALSA, PulseAudio/PipeWire and JACK host APIs |
+| `libaethernr.so` | (none) | AetherSDR's NR2, RN2, NR4 and DFNR, run in the WDSP receive chain (see [Noise reduction](#noise-reduction)) |
 
 ### Build
 
@@ -119,9 +122,11 @@ rpath), so keep the three together.
   same tone in the opposite sideband must be rejected by more than 60 dB
   (measured: about 139 dB). It also initialises PortAudio and checks the
   fork's `paFloat64` extension.
+* **aethernr**: runs NR2, RN2, NR4 and DFNR on synthetic speech in noise.
+  Each must reduce the noise between syllables and keep the speech.
 * `tools/check_exports.py <Console dir> build`: checks that every entry point
-  the C# code P/Invokes into these libraries is exported (611 of 611, apart
-  from `GetTXACFCOMPGainAndMask`, which is missing upstream on Windows too).
+  the C# code P/Invokes into these libraries is exported. All 331 WDSP, 246
+  ChannelMaster and 34 PA19 entry points resolve.
 
 ### How the port works
 
@@ -175,6 +180,42 @@ Changes to shared sources:
    followed by about 40 ms of filter ringing. The copy now happens before the
    release. Under CPU load the smoke test failed in 2 of 61 runs before the
    fix and 0 of 90 after it.
+
+### WDSP 2.10
+
+WDSP is Warren Pratt's (NR0V) DSP library. The copy in `Source/wdsp` is
+TAPR/OpenHPSDR-wdsp "Release Version 2.10" (commit `b02d5bac`), merged with
+Thetis' own additions. It was a three-way merge with TAPR's 1.29 as the
+common base:
+
+* 2.10's new modules come in: NNR (neural noise reduction), NURBS-based EQ
+  design, WBFM, the phase rotator, and others.
+* EQ and CFC use 2.10's code. WDSP 2.00 and 2.10 adopted Thetis' Q-based
+  `SetTXAEQProfile`, `SetRXAEQProfile` and `SetTXACFCOMPprofile` signatures,
+  so the C# console calls them unchanged.
+* Thetis' NR3 (`rnnr`) and NR4 (`sbnr`) stay in the receive chain next to
+  NNR and the new `extnr` module.
+* Thetis' CBL before/after-AGC position is kept.
+* `pscompat.c` keeps six PureSignal entry points that Thetis' PSForm calls
+  and 2.10 removed. `psccF` still works. The pin, map, stabilize, ptol and
+  ints/spi settings no longer exist in 2.10's calibration, so they are
+  accepted and ignored.
+* Bug fixes from AetherSDR's own 2.10 tree
+  (`third_party/wdsp/AETHERSDR-PATCHES.md`, patches 1–9):
+  * a use-after-free in `SetRXAFMNCde`/`SetTXAFMEmphNC` on every channel
+    open
+  * leaks in `notchdb` and `nurbs`
+  * exit handshakes for the worker and flush threads on `CloseChannel`
+  * NULL guards in `nnet`
+  * `SetChannelState` restart fixes: a stop quickly followed by a start could
+    leave a channel silently dead, which is the transmit/receive keying
+    pattern
+* `wdsp.vcxproj` lists the new files for the Windows build.
+
+2.10 plans more FFT sizes and kinds, so its FFTW wisdom file is new
+(`wdspWisdom01`). The first start after updating builds it, which takes
+several minutes; it took 16 minutes on a slow virtual machine. Later starts
+load it.
 
 ### Real-time priority
 
@@ -270,7 +311,9 @@ radio (48 kHz, the tone at the expected pitch, and following a retune),
 sideband rejection (about 59 dB), the S-meter, the position and height of the
 spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
 transmit checks are listed under [Transmit](#transmit), and the setup checks
-under [Setup and calibration](#setup-and-calibration). All 74 checks pass:
+under [Setup and calibration](#setup-and-calibration), and the noise
+reduction checks under [Noise reduction](#noise-reduction). All 82 checks
+pass:
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -429,6 +472,51 @@ covers this area with 17 checks:
 * antennas per band, on receive and transmit
 * 3 dB less PA gain, and a +3 dB drive correction, each doubling the output
 * edited LPF edges selecting a different filter, then the defaults restored
+
+## Noise reduction
+
+![Setup window, noise reduction tab](docs/screenshot-nr.png)
+
+The receiver offers the four noise reduction filters of
+[AetherSDR](https://github.com/aethersdr/AetherSDR), chosen with the
+**Off / NR2 / RN2 / NR4 / DFNR** buttons on the main window. Their settings
+are in **Setup → Noise reduction**.
+
+| | What it is | Character |
+|---|---|---|
+| **NR2** | AetherSDR's spectral noise reduction, an extended port of WDSP's EMNR with gain limits, smoothing and psychoacoustic post-processing | classic; about 20 dB less noise at +7 dB SNR, speech within about 4 dB |
+| **RN2** | RNNoise neural noise reduction, with a dry-mix control that keeps some noise floor | strong on speech, even at negative SNR |
+| **NR4** | libspecbleach spectral noise reduction | gentle: 10 dB by default, and it levels off around 7 dB on steady noise |
+| **DFNR** | DeepFilterNet3 neural noise reduction | the strongest on speech |
+
+How it fits together:
+
+* `libaethernr.so` (`Source/AetherNR`) holds the filters, with Qt removed and
+  a C interface. The README there lists the sources and the changes made.
+* WDSP's new `extnr` module runs the selected filter in the receive chain,
+  after AGC, on the demodulated audio: the same place as Thetis' NR3/NR4.
+  Thetis.Core loads the library and hands its functions to WDSP
+  (`SetExtNRFunctions`), so WDSP does not link against it.
+* RN2 and DFNR need 48 kHz. They do not run in FM, where the receiver runs at
+  192 kHz, and the main window says so.
+* All four filters, like the neural ones, treat a steady carrier as noise. A
+  CW or data signal can be lowered with them on.
+* DFNR's DeepFilterNet3 library (a Rust build) and model are downloaded by
+  CMake from AetherSDR's repository at a pinned commit and checked against
+  SHA-256 hashes. Without network access the build continues without DFNR
+  (`-DTHETIS_DFNR=OFF` skips it).
+
+Licence: AetherSDR is GPL v3, so a build that includes `libaethernr` is
+distributed under GPL v3 as a whole. Thetis is GPL v2 or later, which allows
+this. DeepFilterNet is MIT or Apache-2.0.
+
+Tests:
+
+* the native `aethernr` test on synthetic speech: noise reduced by 20 dB
+  (NR2), 50 dB (RN2), 6 dB (NR4) and 35 dB (DFNR), with speech kept within
+  4.4, 0.7, 0.6 and 0.9 dB
+* 8 new CoreCheck checks: each filter running in the WDSP chain against the
+  simulator, RN2 not running in FM while NR2 does, and switching off again
 
 ## Not yet ported
 

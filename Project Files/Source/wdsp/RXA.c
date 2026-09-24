@@ -352,6 +352,15 @@ void create_rxa (int channel)
 		rxa[channel].midbuff,							// input buffer
 		rxa[channel].midbuff,							// output buffer
 		ch[channel].dsp_rate);							// samplerate
+
+	// external noise reduction (extnr.c)
+	rxa[channel].extnr.p = create_extnr (
+		0,												// run (type, 0 = off)
+		1,												// position: after AGC
+		ch[channel].dsp_size,							// buffer size
+		rxa[channel].midbuff,							// input buffer
+		rxa[channel].midbuff,							// output buffer
+		ch[channel].dsp_rate);							// samplerate
 	
 	// NNR
 	rxa[channel].nnr.p = create_nnr (
@@ -596,6 +605,7 @@ void destroy_rxa (int channel)
 	destroy_emnr (rxa[channel].emnr.p);
 	destroy_rnnr (rxa[channel].rnnr.p);	// NR3 + NR4 support (nr3)
     destroy_sbnr (rxa[channel].sbnr.p);	// NR3 + NR4 support (nr4)
+	destroy_extnr (rxa[channel].extnr.p);
 	destroy_anr (rxa[channel].anr.p);
 	destroy_anf (rxa[channel].anf.p);
 	destroy_eqp (rxa[channel].eqp.p);
@@ -683,6 +693,7 @@ void xrxa (int channel)
 	xemnr (rxa[channel].emnr.p, 0);
 	xrnnr (rxa[channel].rnnr.p, 0);	// NR3 + NR4 support (nr3)
     xsbnr (rxa[channel].sbnr.p, 0);	// NR3 + NR4 support (nr4)
+	xextnr (rxa[channel].extnr.p, 0);
 	xnnr (rxa[channel].nnr.p, 0);
 	xbandpass (rxa[channel].bp1.p, 0);
 	xcbl(rxa[channel].cbl.p, 0);	// [2.10.3.13]MW0LGE carrier removal before AGC
@@ -692,6 +703,7 @@ void xrxa (int channel)
 	xemnr (rxa[channel].emnr.p, 1);
     xrnnr (rxa[channel].rnnr.p, 1);	// NR3 + NR4 support (nr3)
     xsbnr (rxa[channel].sbnr.p, 1);	// NR3 + NR4 support (nr4)
+	xextnr (rxa[channel].extnr.p, 1);
 	xnnr(rxa[channel].nnr.p, 1);
 	xbandpass (rxa[channel].bp1.p, 1);
 	xmeter (rxa[channel].agcmeter.p);
@@ -769,6 +781,7 @@ void setDSPSamplerate_rxa (int channel)
 	setSamplerate_emnr (rxa[channel].emnr.p, ch[channel].dsp_rate);
 	setSamplerate_rnnr(rxa[channel].rnnr.p, ch[channel].dsp_rate); // NR3 + NR4 support (nr3)
 	setSamplerate_sbnr(rxa[channel].sbnr.p, ch[channel].dsp_rate); // NR3 + NR4 support (nr4)
+	setSamplerate_extnr (rxa[channel].extnr.p, ch[channel].dsp_rate);
 	setSamplerate_nnr (rxa[channel].nnr.p, ch[channel].dsp_rate);
 	setSamplerate_bandpass (rxa[channel].bp1.p, ch[channel].dsp_rate);
 	setSamplerate_wcpagc (rxa[channel].agc.p, ch[channel].dsp_rate);
@@ -839,6 +852,8 @@ void setDSPBuffsize_rxa (int channel)
 	setBuffers_rnnr(rxa[channel].rnnr.p, rxa[channel].midbuff, rxa[channel].midbuff); // NR3 + NR4 support (nr3)
 	setSize_sbnr(rxa[channel].sbnr.p, ch[channel].dsp_size); // NR3 + NR4 support (nr4)
     setBuffers_sbnr (rxa[channel].sbnr.p, rxa[channel].midbuff, rxa[channel].midbuff); // NR3 + NR4 support (nr4)
+	setSize_extnr (rxa[channel].extnr.p, ch[channel].dsp_size);
+	setBuffers_extnr (rxa[channel].extnr.p, rxa[channel].midbuff, rxa[channel].midbuff);
 	setSize_emnr (rxa[channel].emnr.p, ch[channel].dsp_size);
 	setBuffers_nnr(rxa[channel].nnr.p, rxa[channel].midbuff, rxa[channel].midbuff);
 	setSize_nnr(rxa[channel].nnr.p, ch[channel].dsp_size);
@@ -947,6 +962,7 @@ void RXAbp1Check (int channel, int amd_run, int snba_run,
 		emnr_run ||
         rnnr_run || // NR3 + NR4 support (nr3)
         sbnr_run || // NR3 + NR4 support (nr4)
+		(rxa[channel].extnr.p && getRun_extnr (rxa[channel].extnr.p)) ||	// external NR
 		nnr_run  ||
 		anf_run  ||
 		anr_run)	gain = 2.0;
@@ -964,6 +980,7 @@ void RXAbp1Set (int channel)
 		(rxa[channel].emnr.p->run == 1) ||
         (rxa[channel].rnnr.p->run == 1) ||  // NR3 + NR4 support (nr3)
         (rxa[channel].sbnr.p->run == 1) ||  // NR3 + NR4 support (nr4)
+		(rxa[channel].extnr.p && getRun_extnr (rxa[channel].extnr.p)) ||	// external NR
 		(rxa[channel].anf.p->run  == 1) ||
 		(rxa[channel].anr.p->run  == 1))	a->run = 1;
 	else									a->run = 0;

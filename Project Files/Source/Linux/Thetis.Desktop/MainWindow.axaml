@@ -94,9 +94,9 @@
             <WrapPanel x:Name="AgcPanel" />
             <TextBlock Classes="caption" x:Name="AgcTopCaption" Text="AGC gain" />
             <Slider x:Name="AgcTopSlider" Minimum="-20" Maximum="120" />
-            <TextBlock Classes="caption" Text="Noise" />
+            <TextBlock Classes="caption" x:Name="NoiseCaption" Text="Noise reduction" />
             <WrapPanel>
-              <ToggleButton x:Name="NrToggle" Classes="panel" Content="NR2" ToolTip.Tip="Spectral noise reduction" />
+              <WrapPanel x:Name="NrPanel" />
               <ToggleButton x:Name="AnfToggle" Classes="panel" Content="ANF" ToolTip.Tip="Automatic notch filter" />
             </WrapPanel>
           </StackPanel>

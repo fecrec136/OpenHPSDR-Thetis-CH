@@ -32,6 +32,7 @@ namespace Thetis
             { "wdsp", "libwdsp.so" },
             { "ChannelMaster", "libChannelMaster.so" },
             { "PA19", "libPA19.so" },
+            { "aethernr", "libaethernr.so" },       // AetherSDR noise reduction (optional)
         };
 
         private static readonly Dictionary<string, IntPtr> _loaded = new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
@@ -84,6 +85,21 @@ namespace Thetis
                 }
             }
             return IntPtr.Zero;
+        }
+
+        /// <summary>Load one of the mapped libraries; returns its handle and the file it was loaded from.</summary>
+        public static bool TryLoad(string name, out IntPtr handle, out string path)
+        {
+            handle = Resolve(name, typeof(NativeLibraries).Assembly, null);
+            path = null;
+            if (handle == IntPtr.Zero) return false;
+            string file = _map[Path.GetFileNameWithoutExtension(name)];
+            foreach (string dir in SearchDirectories())
+            {
+                string candidate = Path.Combine(dir, file);
+                if (File.Exists(candidate)) { path = candidate; break; }
+            }
+            return true;
         }
 
         /// <summary>True if all three native libraries can be loaded.</summary>

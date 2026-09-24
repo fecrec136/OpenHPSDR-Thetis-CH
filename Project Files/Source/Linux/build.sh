@@ -41,7 +41,7 @@ cmake --build "$build_dir" -j"$(nproc)"
 
 echo
 echo "Native libraries:"
-ls -l "$build_dir"/lib{wdsp,WDSP,ChannelMaster,PA19}.so
+ls -l "$build_dir"/lib{wdsp,WDSP,ChannelMaster,PA19,aethernr}.so
 
 if [ "$app" = 1 ]; then
   echo
@@ -50,6 +50,9 @@ if [ "$app" = 1 ]; then
   dotnet publish "$here/Thetis.Desktop/Thetis.Desktop.csproj" -c Release \
     -r linux-x64 --self-contained true -o "$dist_dir"
   cp -a "$build_dir"/libwdsp.so "$build_dir"/libWDSP.so "$build_dir"/libChannelMaster.so "$build_dir"/libPA19.so "$dist_dir"/
+  # AetherSDR noise reduction, and DFNR's model if it was built in
+  cp -a "$build_dir"/libaethernr.so "$dist_dir"/
+  [ -f "$build_dir"/DeepFilterNet3_onnx.tar.gz ] && cp -a "$build_dir"/DeepFilterNet3_onnx.tar.gz "$dist_dir"/
   cp -a "$here/packaging/thetis.png" "$dist_dir"/ 2>/dev/null || true
   echo "Application: $dist_dir/thetis"
 fi
