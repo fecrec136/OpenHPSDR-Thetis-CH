@@ -75,12 +75,6 @@ namespace Thetis.Desktop
         public double WindowWidth { get; set; } = 1280;
         public double WindowHeight { get; set; } = 800;
 
-        private static readonly JsonSerializerOptions _json = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Converters = { new JsonStringEnumConverter() },
-        };
-
         public static string ConfigDirectory => Path.Combine(
             Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is string c && c.Length > 0
                 ? c : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config"),
@@ -98,7 +92,7 @@ namespace Thetis.Desktop
             try
             {
                 if (File.Exists(FilePath))
-                    return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath), _json) ?? new Settings();
+                    return JsonSerializer.Deserialize(File.ReadAllText(FilePath), SettingsJson.Default.Settings) ?? new Settings();
             }
             catch (Exception)
             {
@@ -111,8 +105,18 @@ namespace Thetis.Desktop
         {
             Directory.CreateDirectory(ConfigDirectory);
             string tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(this, _json));
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, SettingsJson.Default.Settings));
             File.Move(tmp, FilePath, true);
         }
+    }
+
+    /// <summary>
+    /// Source-generated (trim-safe) JSON for the settings file: indented, enums
+    /// as names -- the same format the reflection-based serializer wrote.
+    /// </summary>
+    [JsonSourceGenerationOptions(WriteIndented = true, UseStringEnumConverter = true)]
+    [JsonSerializable(typeof(Settings))]
+    internal sealed partial class SettingsJson : JsonSerializerContext
+    {
     }
 }

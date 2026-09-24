@@ -6,5 +6,5 @@ Comment=OpenHPSDR SDR console (Apache Labs ANAN, Hermes, Hermes-Lite 2)
 Exec=@OPT@/thetis
 Icon=@OPT@/thetis.png
 Terminal=false
-Categories=HamRadio;Audio;Network;
+Categories=Network;HamRadio;
 Keywords=SDR;radio;ham;OpenHPSDR;ANAN;

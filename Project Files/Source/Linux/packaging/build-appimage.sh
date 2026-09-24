@@ -38,6 +38,11 @@ copy_lib libfftw3.so.3  "$appdir/usr/lib/thetis/lib"
 copy_lib libfftw3f.so.3 "$appdir/usr/lib/thetis/lib"
 copy_lib libjack.so.0   "$appdir/usr/lib/thetis/lib-fallback"
 copy_lib libdb-5.3.so   "$appdir/usr/lib/thetis/lib-fallback"
+# drop symbol tables (the native libraries are built without debug info)
+strip --strip-unneeded "$appdir"/usr/lib/thetis/lib{wdsp,ChannelMaster,PA19}.so \
+    "$appdir"/usr/lib/thetis/lib/*.so.* "$appdir"/usr/lib/thetis/lib-fallback/*.so*
+# .NET debugger support libraries: not needed to run
+rm -f "$appdir"/usr/lib/thetis/{libmscordaccore.so,libmscordbi.so,createdump} "$appdir"/usr/lib/thetis/*.pdb
 
 install -m 755 "$here/packaging/AppRun" "$appdir/AppRun"
 cp "$here/packaging/thetis.png" "$appdir/thetis.png"
@@ -69,6 +74,6 @@ fi
 
 mkdir -p "$out"
 target="$out/Thetis-$version-$arch.AppImage"
-ARCH=$arch "$tool" --no-appstream "${runtime_args[@]}" "$appdir" "$target"
+ARCH=$arch "$tool" --no-appstream --comp zstd --mksquashfs-opt -Xcompression-level --mksquashfs-opt 22 --mksquashfs-opt -b --mksquashfs-opt 1M "${runtime_args[@]}" "$appdir" "$target"
 chmod +x "$target"
 echo "AppImage: $target"

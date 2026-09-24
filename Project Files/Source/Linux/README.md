@@ -38,6 +38,11 @@ What is inside, and why:
   server, so the system's copy is used. A bundled copy is used only when the
   system has none (Mint 22 and later).
 * If ICU is missing, .NET runs in invariant-culture mode instead of failing.
+* Size: about 25 MB. The publish trims only the .NET framework assemblies
+  (`TrimMode=partial`), leaving Thetis, `Thetis.Core` and Avalonia whole;
+  the settings file uses source-generated JSON, so trimming cannot affect
+  it. The native libraries are stripped, and the image is compressed with
+  zstd at level 22.
 
 To build it (after `./build.sh --deps`):
 
