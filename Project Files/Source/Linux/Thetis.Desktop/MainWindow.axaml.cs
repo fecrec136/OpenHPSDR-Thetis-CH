@@ -161,7 +161,7 @@ namespace Thetis.Desktop
             {
                 if (e.Property != RangeBase.ValueProperty || _updating) return;
                 _radio.AgcTop = _settings.AgcTop = Math.Round(AgcTopSlider.Value);
-                AgcTopCaption.Text = $"AGC gain {_settings.AgcTop:0} dB";
+                AgcTopCaption.Text = AgcTopText(_settings.AgcTop);
             };
             ZoomSlider.PropertyChanged += (_, e) =>
             {
@@ -388,6 +388,10 @@ namespace Thetis.Desktop
             _settings.TxFilterHigh = (int)(TxHighBox.Value ?? 3000);
             _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
         }
+
+        /// <summary>The AGC's maximum gain, not a volume: below about 40 dB the receiver goes quiet.</summary>
+        private static string AgcTopText(double db) =>
+            db < 40 ? $"AGC gain {db:0} dB - low: the receiver will be quiet (usually 80-90)" : $"AGC gain {db:0} dB";
 
         private static string StepLabel(int hz) => hz >= 1000 ? $"{hz / 1000.0:0.###} kHz" : $"{hz} Hz";
 
@@ -735,7 +739,7 @@ namespace Thetis.Desktop
             ModelBox.IsEnabled = RadioBox.IsEnabled = DiscoverButton.IsEnabled = !_radio.PowerOn;
             VolumeSlider.Value = _settings.Volume * 100.0;
             AgcTopSlider.Value = _settings.AgcTop;
-            AgcTopCaption.Text = $"AGC gain {_settings.AgcTop:0} dB";
+            AgcTopCaption.Text = AgcTopText(_settings.AgcTop);
             ZoomSlider.Value = _settings.SpectrumZoom * 100.0;
             RefreshNoiseReduction();
             AnfToggle.IsChecked = _settings.AutoNotch;

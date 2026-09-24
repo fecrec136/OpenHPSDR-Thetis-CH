@@ -100,7 +100,8 @@
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" />
             <TextBlock Classes="caption" Text="AGC" />
             <WrapPanel x:Name="AgcPanel" />
-            <TextBlock Classes="caption" x:Name="AgcTopCaption" Text="AGC gain" />
+            <TextBlock Classes="caption" x:Name="AgcTopCaption" Text="AGC gain" TextWrapping="Wrap"
+                       ToolTip.Tip="The most the AGC may amplify the signal (the console's AGC-T). Not a volume control: use AF for that. Usually 80-90 dB." />
             <Slider x:Name="AgcTopSlider" Minimum="-20" Maximum="120" />
             <TextBlock Classes="caption" x:Name="NoiseCaption" Text="Noise reduction" />
             <WrapPanel>
