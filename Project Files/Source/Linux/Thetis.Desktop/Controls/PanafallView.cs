@@ -31,7 +31,10 @@ namespace Thetis.Desktop.Controls
     public sealed class PanafallView : Control
     {
         // --- what is displayed (set by the window) ---
+        /// <summary>Frequency at the centre of the spectrum data (the receiver's tuning).</summary>
         public long CenterHz { get; set; } = 7100000;
+        /// <summary>The VFO; in CW it is the pitch away from the centre (0 = at the centre).</summary>
+        public long VfoHz { get; set; }
         public int SpanLowHz { get; set; } = -24000;
         public int SpanHighHz { get; set; } = 24000;
         public int FilterLowHz { get; set; } = -2800;
@@ -202,7 +205,7 @@ namespace Thetis.Desktop.Controls
             }
 
             // VFO marker
-            double vx = XForOffset(0, w);
+            double vx = XForOffset(VfoHz != 0 ? VfoHz - CenterHz : 0, w);
             ctx.DrawLine(_vfo, new Point(vx, 0), new Point(vx, ph));
 
             // waterfall

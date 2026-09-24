@@ -332,13 +332,26 @@ namespace Thetis.Radio
         }
 
         /// <summary>
+        /// The frequency the receiver is actually tuned to (the centre of the
+        /// panadapter): the VFO, moved by the CW pitch in CW modes so that a
+        /// carrier on the VFO is heard at the pitch, inside the CW filter
+        /// (console UpdateRX1DDSFreq: rx_freq -/+= cw_pitch for CWU/CWL).
+        /// </summary>
+        public double RxTunedMHz => _mode switch
+        {
+            DSPMode.CWL => _frequencyMHz + FilterPresets.CwPitch * 1e-6,
+            DSPMode.CWU => _frequencyMHz - FilterPresets.CwPitch * 1e-6,
+            _ => _frequencyMHz,
+        };
+
+        /// <summary>
         /// console UpdateRX1DDSFreq + UpdateTXDDSFreq: receive DDCs, the TX
         /// frequency, and the band filters for the new frequency.
         /// </summary>
         private void SendFrequency()
         {
             foreach (int ddc in DdcSetup.Rx1FrequencyDdcs(_model))
-                NetworkIO.VFOfreq(ddc, _frequencyMHz, 0);
+                NetworkIO.VFOfreq(ddc, RxTunedMHz, 0);
             if (!_mox)
             {
                 NetworkIO.VFOfreq(0, _frequencyMHz, 1);
@@ -471,7 +484,7 @@ namespace Thetis.Radio
                         KeyDown();
                         TxRefused?.Invoke("Transmit stopped: mode changed while transmitting.");
                     }
-                    if (_powerOn) { ApplyDspRate(); ApplyDsp(); ApplyTxDsp(); }
+                    if (_powerOn) { ApplyDspRate(); ApplyDsp(); ApplyTxDsp(); SendFrequency(); }   // CW moves the receiver by the pitch
                 }
             }
         }

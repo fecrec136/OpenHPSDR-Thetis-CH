@@ -446,6 +446,13 @@ namespace Thetis.Desktop
                 await Task.Run(() => _radio.InitializeDsp());
                 poll.Stop();
                 RefreshNoiseReduction();            // which filters the library offers
+                if (!AetherNr.Loaded)
+                {
+                    string why = "The noise reduction library did not load: " + AetherNr.Error;
+                    ToolTip.SetTip(NoiseCaption, why);
+                    ToolTip.SetTip(NrPanel, why);
+                    StatusText.Text = why;
+                }
                 _radio.SetSpectrumZoom(_settings.SpectrumZoom);
                 LoadAudioDevices();
                 _timer.Start();
@@ -696,7 +703,8 @@ namespace Thetis.Desktop
                 Panafall.ClearWaterfall();          // old lines were drawn at a different scale
             Panafall.SpanLowHz = lo;
             Panafall.SpanHighHz = hi;
-            Panafall.CenterHz = (long)Math.Round(_radio.FrequencyMHz * 1e6);
+            Panafall.CenterHz = (long)Math.Round(_radio.RxTunedMHz * 1e6);     // CW: the VFO moved by the pitch
+            Panafall.VfoHz = (long)Math.Round(_radio.FrequencyMHz * 1e6);
             Panafall.FilterLowHz = _radio.Filter.Low;
             Panafall.FilterHighHz = _radio.Filter.High;
             if (_radio.GetSpectrum(_pan)) Panafall.PushPanadapter(_pan);
@@ -707,7 +715,9 @@ namespace Thetis.Desktop
             {
                 MeterText.Text = $"{RadioController.SUnits((float)Meter.Dbm),-7} {Meter.Dbm,7:0.0} dBm";
                 SyncText.Text = _radio.HaveSync ? "" : "no data from radio";
-                NoiseCaption.Text = _settings.NoiseReductionType != NrType.Off && !_radio.NoiseReductionActive
+                NoiseCaption.Text = !AetherNr.Loaded
+                    ? "Noise reduction unavailable (hover for why)"
+                    : _radio.PowerOn && _settings.NoiseReductionType != NrType.Off && !_radio.NoiseReductionActive
                     ? $"Noise reduction ({_settings.NoiseReductionType} cannot run {(_radio.Mode == DSPMode.FM ? "in FM" : "here")})"
                     : "Noise reduction";
                 RefreshTxMeters();

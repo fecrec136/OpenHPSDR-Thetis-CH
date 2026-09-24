@@ -124,6 +124,11 @@ rpath), so keep the three together.
   fork's `paFloat64` extension.
 * **aethernr**: runs NR2, RN2, NR4 and DFNR on synthetic speech in noise.
   Each must reduce the noise between syllables and keep the speech.
+* **abi**: fails if a library needs a newer glibc or libstdc++ than Linux
+  Mint 21 / Ubuntu 22.04 provide (glibc 2.35, GLIBCXX_3.4.30). Such a
+  library would not load there. GCC 13 makes `libaethernr` reference
+  `std::string::_M_replace_cold` (GLIBCXX_3.4.31), so
+  `AetherNR/src/glibcxx_compat.cpp` defines it inside the library.
 * `tools/check_exports.py <Console dir> build`: checks that every entry point
   the C# code P/Invokes into these libraries is exported. All 331 WDSP, 246
   ChannelMaster and 34 PA19 entry points resolve.
@@ -280,7 +285,10 @@ path.
   wheel or click on the panadapter; tuning steps from 1 Hz to 100 kHz
 * Band buttons that remember the last frequency and mode per band
 * Modes LSB, USB, DSB, CWL, CWU, FM, AM, SAM, DIGL, DIGU, with the Windows
-  filter presets (F1..F10)
+  filter presets (F1..F10). In CW the receiver sits 600 Hz (the CW pitch)
+  from the VFO, as in the Windows console, so a signal on the VFO line is
+  heard at 600 Hz. The panadapter is centred on the receiver, and the VFO
+  line and filter are drawn on the signal.
 * AGC (fixed, long, slow, medium, fast) and AGC gain, volume, NR2, auto-notch
 * Sample rates of 48, 96, 192 and 384 kHz
 * S-meter, and a panadapter and waterfall with zoom, adjustable dB scale and
@@ -341,7 +349,7 @@ spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
 transmit checks are listed under [Transmit](#transmit), the setup checks
 under [Setup and calibration](#setup-and-calibration), the noise reduction
 checks under [Noise reduction](#noise-reduction), and the transmit audio
-checks under [Transmit audio processing](#transmit-audio-processing). All 90
+checks under [Transmit audio processing](#transmit-audio-processing). All 92
 checks pass:
 
 ```sh
@@ -351,7 +359,11 @@ THETIS_NATIVE_DIR=$PWD/build dotnet run --project Tools/Thetis.CoreCheck -- ~/.l
 
 To use the simulator with the application, start the application with
 `THETIS_DISCOVER_LOOPBACK=1` so that discovery also searches the loopback
-interface. `thetis-corecheck ... --stress-tx 40` powers on, keys TUNE and
+interface. `thetis-corecheck ... --rx-matrix [MODEL...]` receives with every
+Protocol 1 model at 48, 192 and 384 kHz. The S-meter, the spectrum peak and
+the demodulated tone must agree with the carrier before and after a retune.
+All 96 checks pass (the HPSDR/Atlas model is not meaningful against a
+simulated Hermes board). `thetis-corecheck ... --stress-tx 40` powers on, keys TUNE and
 powers off 40 times at random intervals.
 
 **Not yet tested:** a real radio, and Protocol 2. The simulator speaks

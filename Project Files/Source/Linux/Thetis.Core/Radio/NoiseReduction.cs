@@ -64,7 +64,8 @@ namespace Thetis.Radio
             {
                 if (!NativeLibraries.TryLoad("aethernr", out IntPtr lib, out string path))
                 {
-                    _error = "libaethernr.so not found";
+                    _error = NativeLibraries.LoadError("aethernr") ?? "libaethernr.so could not be loaded";
+                    System.Console.Error.WriteLine("thetis: noise reduction unavailable: " + _error);
                     return false;
                 }
                 IntPtr create = NativeLibrary.GetExport(lib, "aethernr_create");
@@ -79,6 +80,7 @@ namespace Thetis.Radio
             catch (Exception ex)
             {
                 _error = ex.Message;
+                System.Console.Error.WriteLine("thetis: noise reduction unavailable: " + _error);
             }
             return Loaded;
         }

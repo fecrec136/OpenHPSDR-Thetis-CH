@@ -181,7 +181,8 @@ add_library(aethernr SHARED
   "${AETHERNR_DIR}/src/aethernr.cpp"
   "${AETHERNR_DIR}/src/aethernr_support.cpp"
   "${AETHERNR_DIR}/src/SpectralNR.cpp"
-  "${AETHERNR_DIR}/src/core/dsp/FftwPlannerLock.cpp")
+  "${AETHERNR_DIR}/src/core/dsp/FftwPlannerLock.cpp"
+  "${AETHERNR_DIR}/src/glibcxx_compat.cpp")
 set_target_properties(aethernr PROPERTIES
   CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
   CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON
@@ -253,6 +254,12 @@ add_test(NAME smoketest COMMAND thetis_smoketest
 add_executable(aethernr_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/aethernr_test.c")
 target_link_libraries(aethernr_test PRIVATE ${CMAKE_DL_LIBS} m)
 add_test(NAME aethernr COMMAND aethernr_test $<TARGET_FILE:aethernr> $<TARGET_FILE_DIR:aethernr>)
+# the libraries must load on Linux Mint 21 / Ubuntu 22.04 (glibc 2.35, GLIBCXX_3.4.30)
+find_program(OBJDUMP_EXE objdump)
+if(OBJDUMP_EXE)
+  add_test(NAME abi COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/abi_check.sh" "${OBJDUMP_EXE}"
+           $<TARGET_FILE:wdsp> $<TARGET_FILE:ChannelMaster> $<TARGET_FILE:PA19> $<TARGET_FILE:aethernr>)
+endif()
 
 # Some C# declarations import "WDSP.dll" rather than "wdsp.dll"; Linux file
 # names are case-sensitive, so provide the upper-case alias as well.

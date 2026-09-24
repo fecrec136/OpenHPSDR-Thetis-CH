@@ -102,6 +102,30 @@ namespace Thetis
             return true;
         }
 
+        /// <summary>
+        /// Why a mapped library does not load: the system loader's message for the
+        /// first copy found (e.g. a missing dependency or symbol version), or "not found".
+        /// </summary>
+        public static string LoadError(string name)
+        {
+            string file = _map[Path.GetFileNameWithoutExtension(name)];
+            foreach (string dir in SearchDirectories())
+            {
+                string candidate = Path.Combine(dir, file);
+                if (!File.Exists(candidate)) continue;
+                try
+                {
+                    NativeLibrary.Free(NativeLibrary.Load(candidate));
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+            return file + " not found";
+        }
+
         /// <summary>True if all three native libraries can be loaded.</summary>
         public static bool TryLoadAll(out string error)
         {

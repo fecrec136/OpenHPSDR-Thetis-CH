@@ -426,6 +426,53 @@ internal static class Program
         Thread.Sleep(500);
     }
 
+    /// <summary>
+    /// Receive with every Protocol 1 model at each sample rate: the S-meter,
+    /// the spectrum peak and the demodulated tone must all agree with the
+    /// carrier, before and after a retune (display and audio on the same DDC).
+    /// </summary>
+    private static int RxMatrix(RadioController radio, DiscoveredRadio target, string statusFile, double carrierMHz, string[] only)
+    {
+        const double tuneMHz = 7.100;
+        var models = Enum.GetValues<HPSDRModel>().Where(m => m > HPSDRModel.FIRST && m < HPSDRModel.LAST).ToList();
+        if (only.Length > 0) models = models.Where(m => only.Contains(m.ToString())).ToList();
+        int[] rates = { 48000, 192000, 384000 };
+        radio.Mode = DSPMode.USB;
+        radio.Agc = AGCMode.MED;
+        radio.SetSpectrumWidth(1000);
+        foreach (var model in models)
+            foreach (int rate in rates)
+            {
+                radio.SampleRate = rate;
+                radio.FrequencyMHz = tuneMHz;
+                string tag = $"{model} {rate / 1000} kHz";
+                if (!radio.Start(target, model, out string error)) { Check(false, $"{tag}: start ({error})"); continue; }
+                for (int step = 0; step < 2; step++)
+                {
+                    double vfo = tuneMHz + step * 0.0005;
+                    radio.FrequencyMHz = vfo;
+                    double toneHz = (carrierMHz - vfo) * 1e6;
+                    Thread.Sleep(2500);
+                    var st = SimStatus(statusFile);
+                    float dbm = radio.SignalDbm();
+                    float[] pix = new float[radio.SpectrumPixels];
+                    bool got = false;
+                    for (int i = 0; i < 50 && !got; i++) { got = radio.GetSpectrum(pix); if (!got) Thread.Sleep(40); }
+                    var (lo, hi) = radio.SpectrumSpan;
+                    double peakHz = got ? lo + (hi - lo) * (double)Array.IndexOf(pix, pix.Max()) / (pix.Length - 1) : double.NaN;
+                    double tone = st.GetProperty("audio_peak_hz").GetDouble();
+                    double level = st.GetProperty("audio_rms_dbfs").GetDouble();
+                    bool ok = dbm > -110f && Math.Abs(peakHz - toneHz) < 3.0 * (hi - lo) / pix.Length + 20
+                              && Math.Abs(tone - toneHz) <= 50 && level > -40;
+                    Check(ok, $"{tag} at {vfo:F4} MHz: S {dbm:F0} dBm, peak {peakHz:+0;-0} Hz, audio {tone:F0} Hz {level:F0} dBFS (want {toneHz:F0} Hz), " +
+                              $"sim DDCs {st.GetProperty("nddc")} DDC0 {st.GetProperty("ddc0_hz")}");
+                }
+                radio.Stop();
+                Thread.Sleep(1000);
+            }
+        return _failures == 0 ? 0 : 1;
+    }
+
     /// <summary>Power on, key TUNE, power off -- repeatedly (shutdown while transmitting).</summary>
     private static int StressTx(RadioController radio, DiscoveredRadio target, int cycles)
     {
@@ -473,6 +520,10 @@ internal static class Program
         if (found.Count == 0) return 1;
         var target = found.FirstOrDefault(r => r.Nic.IsLoopbackLocal) ?? found[0];
         Check(target.Info.DeviceType == HPSDRHW.Hermes, "board reported as Hermes");
+
+        int matrix = Array.IndexOf(args, "--rx-matrix");
+        if (matrix >= 0)
+            return RxMatrix(radio, target, statusFile, carrierMHz, args.Skip(matrix + 1).Where(a => !a.StartsWith("--")).ToArray());
 
         int stress = Array.IndexOf(args, "--stress-tx");
         if (stress >= 0)
@@ -545,6 +596,24 @@ internal static class Program
         double fixedLsb = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
         Console.WriteLine($"  fixed-gain audio: USB {fixedUsb:F1} dBFS, LSB {fixedLsb:F1} dBFS");
         Check(fixedUsb - fixedLsb > 30, "LSB rejects the upper-sideband carrier by >30 dB");
+
+        // a carrier tuned exactly onto the VFO is heard at the CW pitch: the
+        // receiver sits the pitch away (console UpdateRX1DDSFreq)
+        Console.WriteLine("== CW: VFO on the carrier");
+        radio.Agc = AGCMode.MED;
+        foreach (var (mode, sign) in new[] { (DSPMode.CWU, -1), (DSPMode.CWL, +1) })
+        {
+            radio.Mode = mode;
+            radio.FrequencyMHz = carrierMHz;
+            Thread.Sleep(2500);
+            st = SimStatus(statusFile);
+            long wantDdc = (long)Math.Round(carrierMHz * 1e6) + sign * FilterPresets.CwPitch;
+            double cwTone = st.GetProperty("audio_peak_hz").GetDouble(), cwLevel = st.GetProperty("audio_rms_dbfs").GetDouble();
+            Check(st.GetProperty("ddc0_hz").GetInt64() == wantDdc && Math.Abs(cwTone - FilterPresets.CwPitch) <= 50 && cwLevel > -40,
+                  $"{mode}: receiver at {wantDdc} Hz, tone {cwTone:F0} Hz at {cwLevel:F0} dBFS (want {FilterPresets.CwPitch} Hz)");
+        }
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = tuneMHz;
 
         File.Delete(statusFile + ".ctl");
         Setup(radio, statusFile, tuneMHz);
