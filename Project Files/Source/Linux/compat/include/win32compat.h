@@ -27,6 +27,7 @@ GNU General Public License for more details.
 #endif
 
 #include <stdint.h>
+#include <limits.h>                     /* <windows.h> brings INT_MAX etc. in on MSVC */
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,6 +43,10 @@ GNU General Public License for more details.
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
+
+/* WDSP 2.10's debug helper dprintf(const char*, ...) predates POSIX
+   dprintf(int fd, const char*, ...) in <stdio.h>; give it its own name. */
+#define dprintf wdsp_dprintf
 
 /* glibc 2.38+ maps the scanf family to new __isoc23_* symbols whenever
    _GNU_SOURCE is defined, which would make the libraries require glibc 2.38
@@ -191,6 +196,9 @@ BOOL   CloseHandle(HANDLE h);
 
 #define CreateSemaphoreA    CreateSemaphore
 #define CreateEventA        CreateEvent
+/* wide-character variants (WDSP 2.10 calcc.c); object names are not supported */
+#define CreateSemaphoreW(sa, initial, maximum, name) CreateSemaphore((sa), (initial), (maximum), NULL)
+#define CreateEventW(sa, manual, initial, name)      CreateEvent((sa), (manual), (initial), NULL)
 
 /* _beginthread: detached thread, returns non-zero on success */
 uintptr_t _beginthread(void (*start)(void *), unsigned stack_size, void *arg);

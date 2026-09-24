@@ -11,6 +11,7 @@ usage: thetis_smoketest <libwdsp.so> <libChannelMaster.so> <libPA19.so>
 
 */
 
+#define _GNU_SOURCE
 #include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
@@ -109,6 +110,14 @@ int main(int argc, char **argv)
     wdsp = load(argv[1]);
     pa   = load(argv[3]);
     cm   = load(argv[2]);
+
+    /* No FFTW wisdom here, and WDSP plans its FFTs with FFTW_PATIENT, which
+       measures for minutes without it (the application loads saved wisdom).
+       Cap the planning time: the test checks results, not FFT speed. */
+    {
+        void (*set_timelimit)(double) = (void (*)(double))dlsym(RTLD_DEFAULT, "fftw_set_timelimit");
+        if (set_timelimit) set_timelimit(0.001);
+    }
 
     printf("wdsp version %d, ChannelMaster version %d\n",
            ((GetWDSPVersion_t)need(wdsp, "GetWDSPVersion"))(),

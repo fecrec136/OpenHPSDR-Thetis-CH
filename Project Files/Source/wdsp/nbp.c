@@ -53,6 +53,7 @@ void destroy_notchdb (NOTCHDB b)
 	_aligned_free (b->nlow);
 	_aligned_free (b->fwidth);
 	_aligned_free (b->fcenter);
+	_aligned_free (b);
 }
 
 /********************************************************************************************************
@@ -264,7 +265,7 @@ NBP create_nbp(int run, int fnfrun, int position, int size, int nc, int mp, doub
 	a->bplow   = (double *) malloc0 (a->maxpb * sizeof (double));
 	a->bphigh  = (double *) malloc0 (a->maxpb * sizeof (double));
 	calc_nbp_impulse (a);
-	a->p = create_fircore (a->size, a->in, a->out, a->nc, a->mp, a->impulse);
+	a->p = create_fircore (a->size, a->in, a->out, a->nc, a->mp, 16, a->impulse);
 	// print_impulse ("nbp.txt", a->size + 1, impulse, 1, 0);
 	_aligned_free(a->impulse);
 	return a;
