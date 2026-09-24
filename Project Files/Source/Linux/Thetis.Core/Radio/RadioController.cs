@@ -67,6 +67,17 @@ namespace Thetis.Radio
             _dataDir = dataDirectory ?? throw new ArgumentNullException(nameof(dataDirectory));
             Directory.CreateDirectory(_dataDir);
             _filter = FilterPresets.For(_mode)[FilterPresets.DefaultIndex];
+            // Never leave the radio transmitting when the process goes away: this runs
+            // on SIGTERM / SIGINT / Environment.Exit and before an unhandled exception
+            // ends the process.
+            AppDomain.CurrentDomain.ProcessExit += OnProcessEnding;
+            AppDomain.CurrentDomain.UnhandledException += OnProcessEnding;
+        }
+
+        private void OnProcessEnding(object sender, EventArgs e)
+        {
+            try { Stop(); }
+            catch (Exception) { }
         }
 
         /// <summary>Human-readable progress/status messages (may be raised on any thread).</summary>
@@ -625,6 +636,7 @@ namespace Thetis.Radio
             {
                 ivac.SetIVACrun(0, 1);
                 _vacRunning = true;
+                ApplyMicGain();                     // the PC microphone is only live while VAC runs
                 Report($"PC audio on {outInfo?.Name ?? "device " + _vacOutputDevice}");
             }
             else
@@ -639,12 +651,15 @@ namespace Thetis.Radio
             ivac.SetIVACrun(0, 0);
             ivac.StopAudioIVAC(0);
             _vacRunning = false;
+            ApplyMicGain();
         }
 
         #endregion
 
         public void Dispose()
         {
+            AppDomain.CurrentDomain.ProcessExit -= OnProcessEnding;
+            AppDomain.CurrentDomain.UnhandledException -= OnProcessEnding;
             Stop();
             if (_dspReady)
             {

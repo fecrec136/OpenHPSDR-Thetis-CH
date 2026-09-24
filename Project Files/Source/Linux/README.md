@@ -7,7 +7,8 @@ in stages:
 |---|---|---|
 | 1 | Native libraries: `wdsp`, `ChannelMaster`, `PA19` (PortAudio) | **Done**: builds and passes tests |
 | 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
-| 3 | Transmit, PureSignal, full setup, CAT/TCI, meters, RX2, skins | Not started |
+| 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
+| 4 | PureSignal, CW keyer, full setup, CAT/TCI, meters, RX2, skins | Not started |
 
 ## Quick start (Linux Mint 22)
 
@@ -21,7 +22,8 @@ cd "Project Files/Source/Linux"
 The first start optimises the FFTs for your computer (FFTW "wisdom"). This
 takes several minutes, and later starts are quick. Then pick your radio and
 its model at the top, press **POWER**, and choose the sound device for
-receive audio at the bottom.
+receive audio at the bottom. Transmitting is off until you enable it and
+choose your region under **Transmit settings** (see [Transmit](#transmit)).
 
 ## Stage 1: native libraries
 
@@ -53,7 +55,7 @@ rpath), so keep the three together.
 
 * **compat**: unit tests for the Win32 compatibility layer (semaphores,
   events, thread handles, waitable timers, thread pool, Interlocked
-  semantics).
+  semantics, and waits on a closed handle).
 * **smoketest**: loads the three libraries with every symbol resolved, then
   runs a wdsp receive channel on its DSP thread. A USB tone must pass and the
   same tone in the opposite sideband must be rejected by more than 60 dB
@@ -77,6 +79,14 @@ changes listed below. This keeps merges from official Thetis easy.
   stand-ins for `<Windows.h>`, `<avrt.h>`, `<ws2tcpip.h>` and the others.
   The header is force-included into every file, as MSVC keywords are always
   available there.
+* **Closed handles:** on Windows a `HANDLE` is a table index, and waiting on
+  one after `CloseHandle()` fails with `ERROR_INVALID_HANDLE`. Upstream code
+  relies on this: `IOThreadStop()` closes the Protocol 1 send thread's
+  semaphores without waiting for that thread. Here a `HANDLE` is a pointer,
+  so a closed object is marked invalid and its memory is kept for 10 seconds.
+  A late wait then fails as it would on Windows instead of corrupting the
+  heap. AddressSanitizer found this, as a crash on power-off after
+  transmitting.
 * **LP64 vs LLP64:** C `long` is 64-bit on Linux but 32-bit on Windows. The
   Interlocked macros convert their operands exactly as Windows does (for
   example, `InterlockedAnd(&x, 0xffffffff)` is an atomic read, not a mask
@@ -139,14 +149,17 @@ from the Windows sources as far as possible.
 | `Thetis.Core/Upstream/*.g.cs` | Blocks copied verbatim from the Windows sources by `tools/sync_upstream.py` (the ChannelMaster P/Invoke table, the router tables, the PureSignal imports) |
 | `Thetis.Core/Shims/` | Small stand-ins for the parts of the Windows console those files reference (`Display`, `NetworkIO`, `cmaster` start-up, `Win32.memcpy`) |
 | `Thetis.Core/Radio/RadioController.cs` | Power on/off, tuning, mode, filter, AGC, volume, NR, sample rate, S-meter, panadapter data, VAC. It follows the call order of the Windows console. |
+| `Thetis.Core/Radio/RadioController.Transmit.cs` | MOX, TUNE, drive, microphone, transmit meters, SWR protection, timeout, radio PTT |
+| `Thetis.Core/Radio/BandFilters.cs` | Alex HPF/LPF and BPF relay selection, open-collector outputs, the HL2 N2ADR preset |
+| `Thetis.Core/Radio/BandPlanRegions.cs` | Band from frequency, and the amateur allocations per region that limit transmitting |
 | `Thetis.Desktop/` | The Avalonia application |
 | `Tools/Thetis.RadioSim/` | Protocol 1 radio simulator (see below) |
 | `Tools/Thetis.CoreCheck/` | Headless end-to-end test of `Thetis.Core` |
 
 These Windows source files are compiled into `Thetis.Core` **unmodified**, so
 upstream changes flow in automatically: `HPSDR/clsRadioDiscovery.cs`,
-`HPSDR/NetworkIOImports.cs`, `HPSDR/specHPSDR.cs`, `dsp.cs`, `ivac.cs`,
-`enums.cs` and `clsHardwareSpecific.cs`. The only change to them is in
+`HPSDR/NetworkIOImports.cs`, `HPSDR/specHPSDR.cs`, `HPSDR/Penny.cs`, `dsp.cs`,
+`ivac.cs`, `enums.cs` and `clsHardwareSpecific.cs`. The only change to them is in
 `clsRadioDiscovery.cs`: two network-interface properties that .NET does not
 support on Linux (`IsDhcpEnabled`, `Speed`) are read inside `try`, which
 behaves the same on Windows.
@@ -184,12 +197,21 @@ orientation that the unmodified Thetis receive chain expects from OpenHPSDR
 hardware (`--textbook-iq` gives the opposite). It also stops streaming when
 the host goes quiet, as the Hermes firmware watchdog does.
 
+For transmit it sends a microphone tone (`--mic-tone`, default 1 kHz at
+−20 dBFS). It decodes what the host sends: MOX, the TX frequency, drive, the
+Alex filter bits and the open-collector outputs. It analyses the transmitted
+I/Q (level and tone) and models a Hermes PA (`--pa-gain`, `--max-power`) and
+directional coupler. It reports forward and reflected power into a load of
+the chosen SWR (`--swr`). While it runs, writing
+`{"swr": 3.0, "ptt": true}` to `<status file>.ctl` changes the load or
+presses the radio's PTT input.
+
 `Tools/Thetis.CoreCheck` drives `Thetis.Core` against it. It checks
 discovery, connecting, DDC tuning and retuning, the audio returned to the
 radio (48 kHz, the tone at the expected pitch, and following a retune),
 sideband rejection (about 59 dB), the S-meter, the position and height of the
-spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. All 22
-checks pass:
+spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
+transmit checks are listed under [Transmit](#transmit). All 57 checks pass:
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -198,7 +220,8 @@ THETIS_NATIVE_DIR=$PWD/build dotnet run --project Tools/Thetis.CoreCheck -- ~/.l
 
 To use the simulator with the application, start the application with
 `THETIS_DISCOVER_LOOPBACK=1` so that discovery also searches the loopback
-interface.
+interface. `thetis-corecheck ... --stress-tx 40` powers on, keys TUNE and
+powers off 40 times at random intervals.
 
 **Not yet tested:** a real radio, and Protocol 2. The simulator speaks
 Protocol 1 only, and this development environment has no radio or sound
@@ -215,12 +238,90 @@ Found while porting (the Windows build behaves the same way):
 * `NetworkIO.VFOfreq` truncates instead of rounding, so 7.1005 MHz became
   7,100,499 Hz. The Linux copy rounds.
 
+## Transmit
+
+> **Read this before connecting an antenna.** Transmit has been tested only
+> against the simulator, never with a real radio. Start into a dummy load at
+> low drive, and check the output frequency, the power and the low-pass
+> filter relay on the radio before going on the air. You are responsible
+> for what you transmit.
+
+![Thetis on Linux tuning into the simulator's dummy load](docs/screenshot-tx.png)
+
+The transmit code follows the Windows console:
+
+* **Keying:** `chkMOX_CheckedChanged2`, `HdwMOXChanged`, `AudioMOXChanged`,
+  `cmaster.Mox` and `chkTUN_CheckedChanged`, with the same delays for relays
+  to settle (`rf_delay`, `mox_delay`, `ptt_out_delay`).
+* **Drive:** `setPowerFromDriveSlider`, with the default PA gain table for the
+  model and band from `clsHardwareSpecific.cs`, so *drive %* is roughly
+  *watts* on a 100 W radio, as on Windows. The Hermes-Lite 2 uses its own
+  formula.
+* **Band filters:** `setAlexHPF`, `setAlexLPF` and `setBPF1ForOrionIISaturn`,
+  with the Setup form's default band edges. On transmit the LPF follows the
+  TX frequency. Open-collector outputs come through the unmodified
+  `Penny.cs`. The Hermes-Lite 2 **N2ADR filter board** option loads the same
+  OC preset as the Windows Setup form.
+* **Microphone:** the radio's mic input, or a PC input device through VAC
+  (**Mic in** at the bottom; PC audio must be on). Mic gain is −40 to +70 dB.
+  The TX filter defaults to 100 to 3000 Hz.
+* **Meters:** forward power, SWR, mic peak and ALC, using the console's
+  coupler constants per model (`computeAlexFwdPower`, `computeRefPower`).
+* **SWR protection** (console meter loop): an open antenna (over 10 W out
+  and almost all of it reflected) unkeys. Above 2:1 the drive folds back to
+  `2 / (SWR + 1)`, except while tuning at up to 35 W with the tune power at
+  70 % or less. Unlike the console, the fold-back holds until you unkey
+  instead of releasing as soon as the reduced power falls under the 5 W
+  threshold, which made the console hunt between full and reduced power.
+* **Radio PTT input** (mic PTT or footswitch) keys and unkeys the radio.
+
+Safety features added on top of the Windows behaviour:
+
+* Transmitting is **off** until you tick *Allow transmitting* **and** choose
+  your region. The choices are IARU Region 1, 2 or 3, or United States.
+* Everything transmitted must fall inside one amateur allocation for that
+  region: the VFO plus the whole TX passband, or the ±600 Hz tune carrier.
+  So USB at 7.199 MHz with a 3 kHz filter is refused in Region 1. The
+  allocations are the common ITU/IARU ones, including the WRC-15 60 m band
+  and the five US 60 m channels. They are a safety net, not a statement of
+  what your licence allows.
+* A **transmit timeout** unkeys after 3 minutes by default (0 turns it off).
+* The radio unkeys when:
+  * it stops sending data
+  * you power off
+  * you change mode
+  * you retune outside the band being transmitted on
+  * the application is terminated (SIGTERM or SIGINT) or crashes with an
+    unhandled .NET exception
+* The reason for every refusal or forced unkey is shown next to the MOX and
+  TUNE buttons.
+
+The transmit checks in `Thetis.CoreCheck` (35 of the 57):
+
+* refusal with transmit disabled, with no region, outside the band, and with
+  a passband over a band edge
+* filter bits on 40, 20 and 80 m, on receive and on transmit
+* TUNE at 10 %: a carrier at +600 Hz and about 10 W, with forward power and
+  SWR meters that agree with the simulator
+* retuning while transmitting, within the band and out of it
+* SWR fold-back at 3:1 (80 W reduced to about 19 W)
+* MOX with the radio mic: the 1 kHz tone appears at +1 kHz in USB and −1 kHz
+  in LSB
+* the open-antenna unkey, the timeout, radio PTT press and release, and power
+  off while transmitting
+
+The simulator decodes transmit I/Q with the same mirrored orientation it
+uses for receive. That is the convention the unmodified Thetis chain uses
+with OpenHPSDR hardware.
+
 ### Not yet ported
 
-Transmit (MOX, TUNE, microphone, CW keyer), PureSignal, diversity, RX2 and
-the sub-receiver, the full setup form (calibration, Alex/BPF relay tables,
-ADC assignment, antenna selection, attenuator and preamp), band stacking, the
-MeterManager meters, CAT, TCI, MIDI, recording, and skins.
+The CW keyer (CW modes can only TUNE), PureSignal, EER, VOX, the TX
+equaliser, compressor and CFC controls, two-tone, transverters, diversity,
+RX2 and the sub-receiver, the rest of the setup form (calibration, per-band
+PA gain, relay band edges, ADC assignment, antenna selection, attenuator and
+preamp), band stacking, the MeterManager meters, CAT, TCI, MIDI, recording,
+and skins.
 
 Notes for those stages:
 

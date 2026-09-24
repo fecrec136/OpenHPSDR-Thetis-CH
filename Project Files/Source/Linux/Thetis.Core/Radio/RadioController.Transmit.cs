@@ -121,6 +121,9 @@ namespace Thetis.Radio
             set { _micSource = value; if (_powerOn) { ApplyMicGain(); ApplyVacBypass(); } }
         }
 
+        /// <summary>True if the PC microphone is selected but PC audio (VAC) is not running, so the radio's mic is used.</summary>
+        public bool PcMicUnavailable => _micSource == MicSource.Pc && !_vacRunning;
+
         public (int low, int high) TxFilter
         {
             get => (_txFilterLow, _txFilterHigh);

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Thetis.Radio;
 
 namespace Thetis.Desktop
 {
@@ -47,6 +48,22 @@ namespace Thetis.Desktop
         public bool PcAudio { get; set; } = true;
         public string AudioHostApi { get; set; }
         public string AudioOutputDevice { get; set; }
+
+        public string AudioInputDevice { get; set; }
+
+        // transmit: off until the operator enables it and picks a region
+        public bool TransmitAllowed { get; set; }
+        public TxRegion Region { get; set; } = TxRegion.None;
+        public int TxTimeoutSeconds { get; set; } = 180;
+        public bool RadioPtt { get; set; } = true;
+        public bool SwrProtection { get; set; } = true;
+        public bool Hl2N2adrFilterBoard { get; set; }
+        public int DrivePercent { get; set; } = 10;
+        public int TunePercent { get; set; } = 10;
+        public double MicGainDb { get; set; } = 10.0;
+        public MicSource MicSource { get; set; } = MicSource.Radio;
+        public int TxFilterLow { get; set; } = 100;
+        public int TxFilterHigh { get; set; } = 3000;
 
         public double SpectrumMaxDbm { get; set; } = -40.0;
         public double SpectrumMinDbm { get; set; } = -140.0;

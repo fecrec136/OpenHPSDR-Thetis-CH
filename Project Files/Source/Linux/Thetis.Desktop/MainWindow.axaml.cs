@@ -4,7 +4,8 @@ This file is part of a program that implements a Software-Defined Radio.
 
 Main receiver window of the Linux front end: radio selection and power,
 VFO, band/mode/filter, AGC, volume, noise reduction, S-meter, panadapter
-and waterfall, and PC audio routing.
+and waterfall, PC audio routing, and transmit (MOX, TUNE, drive, mic,
+meters and the transmit settings).
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -41,6 +42,8 @@ namespace Thetis.Desktop
         private List<DiscoveredRadio> _radios = new List<DiscoveredRadio>();
         private IReadOnlyList<AudioHostApi> _hostApis = Array.Empty<AudioHostApi>();
         private IReadOnlyList<AudioDevice> _outputs = Array.Empty<AudioDevice>();
+        private IReadOnlyList<AudioDevice> _inputs = Array.Empty<AudioDevice>();
+        private string _lastTxMessage;
         private float[] _pan = Array.Empty<float>();
         private float[] _wf = Array.Empty<float>();
         private bool _updating;              // suppress control events while code updates controls
@@ -52,6 +55,14 @@ namespace Thetis.Desktop
             DSPMode.LSB, DSPMode.USB, DSPMode.DSB, DSPMode.CWL, DSPMode.CWU,
             DSPMode.FM, DSPMode.AM, DSPMode.SAM, DSPMode.DIGL, DSPMode.DIGU,
         };
+        private static readonly (TxRegion region, string label)[] _regions =
+        {
+            (TxRegion.None, "Not set (transmit disabled)"),
+            (TxRegion.IaruRegion1, "IARU Region 1 (Europe, Africa, Middle East)"),
+            (TxRegion.IaruRegion2, "IARU Region 2 (Americas)"),
+            (TxRegion.UnitedStates, "United States"),
+            (TxRegion.IaruRegion3, "IARU Region 3 (Asia-Pacific)"),
+        };
         private static readonly AGCMode[] _agcModes = { AGCMode.FIXD, AGCMode.LONG, AGCMode.SLOW, AGCMode.MED, AGCMode.FAST };
 
         public MainWindow()
@@ -60,6 +71,8 @@ namespace Thetis.Desktop
             Width = _settings.WindowWidth;
             Height = _settings.WindowHeight;
             _radio.Status += s => Dispatcher.UIThread.Post(() => StatusText.Text = s);
+            _radio.TxRefused += r => Dispatcher.UIThread.Post(() => { StatusText.Text = r; _lastTxMessage = r; });
+            _radio.TxStateChanged += () => Dispatcher.UIThread.Post(RefreshTx);
 
             BuildStaticControls();
             ApplySettingsToRadio();
@@ -67,6 +80,9 @@ namespace Thetis.Desktop
 
             Opened += async (_, _) => await StartDspAsync();
             Closing += (_, _) => Shutdown();
+            // killed or crashed without closing the window: Thetis.Core unkeys the
+            // radio; keep the settings too
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { _settings.Save(); } catch (Exception) { } };
             _timer.Tick += (_, _) => OnTick();
         }
 
@@ -166,12 +182,20 @@ namespace Thetis.Desktop
                 LoadOutputDevices();
                 ApplyAudioRouting();
             };
+            InputDeviceBox.SelectionChanged += (_, _) =>
+            {
+                if (_updating || InputDeviceBox.SelectedIndex < 0) return;
+                _settings.AudioInputDevice = _inputs[InputDeviceBox.SelectedIndex].Name;
+                ApplyAudioRouting();
+            };
             OutputDeviceBox.SelectionChanged += (_, _) =>
             {
                 if (_updating || OutputDeviceBox.SelectedIndex < 0) return;
                 _settings.AudioOutputDevice = _outputs[OutputDeviceBox.SelectedIndex].Name;
                 ApplyAudioRouting();
             };
+
+            BuildTransmitControls();
 
             // keyboard: arrows tune by the step, page up/down by 10 steps
             KeyDown += (_, e) =>
@@ -182,6 +206,81 @@ namespace Thetis.Desktop
                 Tune(SnapToStep((long)Math.Round(_radio.FrequencyMHz * 1e6) + (long)n * _settings.TuneStepHz) / 1e6);
                 e.Handled = true;
             };
+        }
+
+        private void BuildTransmitControls()
+        {
+            MicSourceBox.ItemsSource = new[] { "Radio microphone", "PC (Mic in)" };
+            RegionBox.ItemsSource = _regions.Select(r => r.label).ToList();
+
+            MoxButton.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                string why;
+                if (!_radio.SetMox(MoxButton.IsChecked == true, out why)) StatusText.Text = why;
+                RefreshTx();
+            };
+            TuneButton.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                string why;
+                if (!_radio.SetTune(TuneButton.IsChecked == true, out why)) StatusText.Text = why;
+                RefreshTx();
+            };
+            DriveSlider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property != RangeBase.ValueProperty || _updating) return;
+                _radio.DrivePercent = _settings.DrivePercent = (int)Math.Round(DriveSlider.Value);
+                RefreshTxCaptions();
+            };
+            TunePowerSlider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property != RangeBase.ValueProperty || _updating) return;
+                _radio.TunePercent = _settings.TunePercent = (int)Math.Round(TunePowerSlider.Value);
+                RefreshTxCaptions();
+            };
+            MicGainSlider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property != RangeBase.ValueProperty || _updating) return;
+                _radio.MicGainDb = _settings.MicGainDb = Math.Round(MicGainSlider.Value);
+                RefreshTxCaptions();
+            };
+            MicSourceBox.SelectionChanged += (_, _) =>
+            {
+                if (_updating || MicSourceBox.SelectedIndex < 0) return;
+                _radio.MicSource = _settings.MicSource = MicSourceBox.SelectedIndex == 1 ? MicSource.Pc : MicSource.Radio;
+            };
+            TxEnableCheck.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _radio.TransmitAllowed = _settings.TransmitAllowed = TxEnableCheck.IsChecked == true;
+                if (!_radio.TransmitAllowed) { _radio.SetMox(false, out _); }
+                RefreshTx();
+            };
+            RegionBox.SelectionChanged += (_, _) =>
+            {
+                if (_updating || RegionBox.SelectedIndex < 0) return;
+                _radio.SetMox(false, out _);
+                _radio.Region = _settings.Region = _regions[RegionBox.SelectedIndex].region;
+                RefreshTx();
+            };
+            TxLowBox.ValueChanged += (_, _) => { if (!_updating) ApplyTxFilter(); };
+            TxHighBox.ValueChanged += (_, _) => { if (!_updating) ApplyTxFilter(); };
+            TxTimeoutBox.ValueChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _radio.TxTimeoutSeconds = _settings.TxTimeoutSeconds = (int)(TxTimeoutBox.Value ?? 180);
+            };
+            RadioPttCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.RadioPttEnabled = _settings.RadioPtt = RadioPttCheck.IsChecked == true; };
+            SwrProtectCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.SwrProtection = _settings.SwrProtection = SwrProtectCheck.IsChecked == true; };
+            N2adrCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.Hl2N2adrFilterBoard = _settings.Hl2N2adrFilterBoard = N2adrCheck.IsChecked == true; };
+        }
+
+        private void ApplyTxFilter()
+        {
+            _settings.TxFilterLow = (int)(TxLowBox.Value ?? 100);
+            _settings.TxFilterHigh = (int)(TxHighBox.Value ?? 3000);
+            _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
         }
 
         private static string StepLabel(int hz) => hz >= 1000 ? $"{hz / 1000.0:0.###} kHz" : $"{hz} Hz";
@@ -198,6 +297,17 @@ namespace Thetis.Desktop
             _radio.Volume = _settings.Volume;
             _radio.NoiseReduction = _settings.NoiseReduction;
             _radio.AutoNotch = _settings.AutoNotch;
+            _radio.TransmitAllowed = _settings.TransmitAllowed;
+            _radio.Region = _settings.Region;
+            _radio.TxTimeoutSeconds = _settings.TxTimeoutSeconds;
+            _radio.RadioPttEnabled = _settings.RadioPtt;
+            _radio.SwrProtection = _settings.SwrProtection;
+            _radio.Hl2N2adrFilterBoard = _settings.Hl2N2adrFilterBoard;
+            _radio.DrivePercent = _settings.DrivePercent;
+            _radio.TunePercent = _settings.TunePercent;
+            _radio.MicGainDb = _settings.MicGainDb;
+            _radio.MicSource = _settings.MicSource;
+            _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
             Panafall.MaxDbm = _settings.SpectrumMaxDbm;
             Panafall.MinDbm = _settings.SpectrumMinDbm;
             Panafall.PanFraction = _settings.PanFraction;
@@ -427,14 +537,23 @@ namespace Thetis.Desktop
             if (idx < 0 && _outputs.Count > 0) idx = 0;
             OutputDeviceBox.SelectedIndex = idx;
             if (idx >= 0) _settings.AudioOutputDevice = _outputs[idx].Name;
+
+            _inputs = h >= 0 ? AudioDevices.Devices(_hostApis[h].Index).Where(d => d.MaxInputChannels >= 1).ToList() : new List<AudioDevice>();
+            InputDeviceBox.ItemsSource = _inputs.Select(d => d.Name).ToList();
+            idx = _inputs.ToList().FindIndex(d => d.Name == _settings.AudioInputDevice);
+            if (idx < 0 && h >= 0) idx = _inputs.ToList().FindIndex(d => d.Index == _hostApis[h].DefaultInputDevice);
+            if (idx < 0 && _inputs.Count > 0) idx = 0;
+            InputDeviceBox.SelectedIndex = idx;
+            if (idx >= 0) _settings.AudioInputDevice = _inputs[idx].Name;
             _updating = false;
         }
 
         private void ApplyAudioRouting()
         {
-            int h = HostApiBox.SelectedIndex, o = OutputDeviceBox.SelectedIndex;
+            int h = HostApiBox.SelectedIndex, o = OutputDeviceBox.SelectedIndex, i = InputDeviceBox.SelectedIndex;
             bool enable = _settings.PcAudio && h >= 0 && o >= 0;
-            _radio.ConfigureVac(enable, enable ? _hostApis[h].Index : -1, enable ? _outputs[o].HostApiDeviceIndex : -1, -1);
+            _radio.ConfigureVac(enable, enable ? _hostApis[h].Index : -1, enable ? _outputs[o].HostApiDeviceIndex : -1,
+                                enable && i >= 0 ? _inputs[i].HostApiDeviceIndex : -1);
         }
 
         #endregion
@@ -461,12 +580,12 @@ namespace Thetis.Desktop
             if (_radio.GetSpectrum(_pan)) Panafall.PushPanadapter(_pan);
             if (_radio.GetSpectrum(_wf, waterfall: true)) Panafall.PushWaterfall(_wf);
 
-            float dbm = _radio.SignalDbm();
-            Meter.Update(dbm);
+            if (!_radio.Mox) Meter.Update(_radio.SignalDbm());   // the receiver is off while transmitting
             if (++_meterDivider % 6 == 0)
             {
                 MeterText.Text = $"{RadioController.SUnits((float)Meter.Dbm),-7} {Meter.Dbm,7:0.0} dBm";
                 SyncText.Text = _radio.HaveSync ? "" : "no data from radio";
+                RefreshTxMeters();
             }
         }
 
@@ -494,6 +613,56 @@ namespace Thetis.Desktop
             RefreshModes();
             RefreshFilters();
             RefreshAgc();
+            RefreshTx();
+        }
+
+        private void RefreshTx()
+        {
+            _updating = true;
+            MoxButton.IsChecked = _radio.Mox && !_radio.Tuning;
+            TuneButton.IsChecked = _radio.Tuning;
+            MoxButton.IsEnabled = TuneButton.IsEnabled = _radio.PowerOn;
+            DriveSlider.Value = _settings.DrivePercent;
+            TunePowerSlider.Value = _settings.TunePercent;
+            MicGainSlider.Value = _settings.MicGainDb;
+            MicSourceBox.SelectedIndex = _settings.MicSource == MicSource.Pc ? 1 : 0;
+            TxEnableCheck.IsChecked = _settings.TransmitAllowed;
+            RegionBox.SelectedIndex = Math.Max(0, Array.FindIndex(_regions, r => r.region == _settings.Region));
+            TxLowBox.Value = _settings.TxFilterLow;
+            TxHighBox.Value = _settings.TxFilterHigh;
+            TxTimeoutBox.Value = _settings.TxTimeoutSeconds;
+            RadioPttCheck.IsChecked = _settings.RadioPtt;
+            SwrProtectCheck.IsChecked = _settings.SwrProtection;
+            N2adrCheck.IsChecked = _settings.Hl2N2adrFilterBoard;
+            _updating = false;
+            RefreshTxCaptions();
+            RefreshTxMeters();
+        }
+
+        private void RefreshTxCaptions()
+        {
+            DriveCaption.Text = $"Drive {_settings.DrivePercent} %";
+            TunePowerCaption.Text = $"Tune power {_settings.TunePercent} %";
+            MicGainCaption.Text = $"Mic gain {_settings.MicGainDb:0} dB";
+        }
+
+        private void RefreshTxMeters()
+        {
+            // WDSP's transmit meters only run while the transmitter does, as in the console
+            TxMeterText.Text = _radio.Mox
+                ? $"{_radio.ForwardWatts,5:0.0} W   SWR {_radio.Swr:0.0}\nmic {Math.Clamp(_radio.MicPeakDb(), -99f, 99f),3:0} dB  ALC {Math.Clamp(_radio.AlcGainDb(), -99f, 99f),3:0} dB"
+                : "";
+            TxMeterText.IsVisible = _radio.Mox;
+
+            string warn = null;
+            if (!_settings.TransmitAllowed) warn = "Transmit is off. Enable it under Transmit settings.";
+            else if (_settings.Region == TxRegion.None) warn = "Choose your region under Transmit settings to transmit.";
+            else if (_radio.HighSwr) warn = $"High SWR: drive reduced ({_radio.Swr:0.0}:1).";
+            else if (_radio.PowerOn && _radio.PcMicUnavailable) warn = "PC microphone selected but PC audio is off: the radio's microphone is used.";
+            else if (!_radio.Mox && _lastTxMessage != null && _lastTxMessage.StartsWith("Transmit stopped")) warn = _lastTxMessage;
+            TxWarning.Text = warn ?? "";
+            TxWarning.IsVisible = warn != null;
+            if (_radio.Mox) _lastTxMessage = null;
         }
 
         private void RefreshVfo()

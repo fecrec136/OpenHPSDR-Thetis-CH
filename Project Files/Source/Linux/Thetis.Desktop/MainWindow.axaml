@@ -29,6 +29,8 @@
         <CheckBox x:Name="PcAudioCheck" Content="PC audio" VerticalAlignment="Center" />
         <ComboBox x:Name="HostApiBox" MinWidth="120" />
         <ComboBox x:Name="OutputDeviceBox" MinWidth="320" />
+        <TextBlock Text="Mic in" VerticalAlignment="Center" Foreground="#9AA4AE" Margin="12,0,0,0" />
+        <ComboBox x:Name="InputDeviceBox" MinWidth="220" ToolTip.Tip="PC microphone, used when Microphone is set to PC" />
         <TextBlock Text="Sample rate" VerticalAlignment="Center" Foreground="#9AA4AE" Margin="12,0,0,0" />
         <ComboBox x:Name="SampleRateBox" MinWidth="100" />
         <TextBlock x:Name="SyncText" VerticalAlignment="Center" Foreground="#9AA4AE" Margin="12,0,0,0" />
@@ -42,6 +44,42 @@
           <StackPanel>
             <c:SMeter x:Name="Meter" Height="46" />
             <TextBlock x:Name="MeterText" HorizontalAlignment="Right" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,3,0,0" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="group">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+              <ToggleButton x:Name="MoxButton" Classes="tx" Content="MOX" ToolTip.Tip="Transmit (the radio's PTT input also keys it)" />
+              <ToggleButton x:Name="TuneButton" Classes="tx" Content="TUNE" ToolTip.Tip="Send a steady carrier at the tune power" />
+            </StackPanel>
+            <TextBlock x:Name="TxMeterText" HorizontalAlignment="Center" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,4,0,0" />
+            <TextBlock x:Name="TxWarning" Classes="warn" IsVisible="False" />
+            <TextBlock Classes="caption" x:Name="DriveCaption" Text="Drive" />
+            <Slider x:Name="DriveSlider" Minimum="0" Maximum="100" />
+            <TextBlock Classes="caption" x:Name="TunePowerCaption" Text="Tune power" />
+            <Slider x:Name="TunePowerSlider" Minimum="0" Maximum="100" />
+            <TextBlock Classes="caption" x:Name="MicGainCaption" Text="Mic gain" />
+            <Slider x:Name="MicGainSlider" Minimum="-40" Maximum="70" />
+            <TextBlock Classes="caption" Text="Microphone" />
+            <ComboBox x:Name="MicSourceBox" HorizontalAlignment="Stretch" />
+            <Expander x:Name="TxSettingsExpander" Header="Transmit settings" HorizontalAlignment="Stretch" Margin="0,6,0,0">
+              <StackPanel>
+                <CheckBox x:Name="TxEnableCheck" Content="Allow transmitting" />
+                <TextBlock Classes="caption" Text="Region (limits transmit to the amateur bands)" TextWrapping="Wrap" />
+                <ComboBox x:Name="RegionBox" HorizontalAlignment="Stretch" />
+                <TextBlock Classes="caption" Text="Transmit filter (Hz)" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <NumericUpDown x:Name="TxLowBox" Minimum="0" Maximum="1000" Increment="50" FormatString="0" Width="110" />
+                  <NumericUpDown x:Name="TxHighBox" Minimum="1000" Maximum="10000" Increment="100" FormatString="0" Width="120" />
+                </StackPanel>
+                <TextBlock Classes="caption" Text="Transmit timeout (s, 0 = off)" />
+                <NumericUpDown x:Name="TxTimeoutBox" Minimum="0" Maximum="3600" Increment="30" FormatString="0" HorizontalAlignment="Stretch" />
+                <CheckBox x:Name="RadioPttCheck" Content="Key from the radio's PTT input" />
+                <CheckBox x:Name="SwrProtectCheck" Content="SWR protection" />
+                <CheckBox x:Name="N2adrCheck" Content="HL2: N2ADR filter board" ToolTip.Tip="Open-collector outputs for the N2ADR filter board (Hermes-Lite 2). Takes effect at the next power on." />
+              </StackPanel>
+            </Expander>
           </StackPanel>
         </Border>
 

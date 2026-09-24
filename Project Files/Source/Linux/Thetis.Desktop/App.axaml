@@ -21,6 +21,25 @@
     <Style Selector="ToggleButton#PowerButton:checked /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="#C62828" />
     </Style>
+    <!-- transmit buttons: red while keyed -->
+    <Style Selector="ToggleButton.tx">
+      <Setter Property="MinWidth" Value="80" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Margin" Value="2" />
+    </Style>
+    <Style Selector="ToggleButton.tx:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#C62828" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="TextBlock.warn">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#FFB74D" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="2,4,2,0" />
+    </Style>
     <Style Selector="TextBlock.caption">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="#9AA4AE" />
