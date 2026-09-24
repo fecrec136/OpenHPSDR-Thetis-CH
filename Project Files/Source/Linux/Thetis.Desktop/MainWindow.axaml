@@ -18,6 +18,7 @@
           <Button x:Name="DiscoverButton" Content="Discover" />
           <TextBlock Text="Model" VerticalAlignment="Center" Foreground="#9AA4AE" />
           <ComboBox x:Name="ModelBox" MinWidth="130" />
+          <Button x:Name="SetupButton" Content="Setup" ToolTip.Tip="Calibration, PA gain, filters and antennas" />
         </StackPanel>
         <TextBlock x:Name="StatusText" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#9AA4AE" TextTrimming="CharacterEllipsis" />
       </DockPanel>
@@ -85,6 +86,8 @@
 
         <Border Classes="group">
           <StackPanel>
+            <TextBlock Classes="caption" x:Name="AttCaption" Text="Attenuator" ToolTip.Tip="Receive attenuator, remembered per band" />
+            <Slider x:Name="AttSlider" Minimum="0" Maximum="31" TickFrequency="1" IsSnapToTickEnabled="True" />
             <TextBlock Classes="caption" Text="AF (volume)" />
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" />
             <TextBlock Classes="caption" Text="AGC" />

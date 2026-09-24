@@ -65,6 +65,20 @@ namespace Thetis.Desktop
         public int TxFilterLow { get; set; } = 100;
         public int TxFilterHigh { get; set; } = 3000;
 
+        // setup and calibration
+        /// <summary>Receive attenuation per band ("GEN" outside the bands), dB.</summary>
+        public Dictionary<string, int> AttenuatorByBand { get; set; } = new Dictionary<string, int>();
+        /// <summary>S-meter / panadapter calibration per radio model (missing = the model's default).</summary>
+        public Dictionary<HPSDRModel, float> MeterCalOffset { get; set; } = new Dictionary<HPSDRModel, float>();
+        public Dictionary<HPSDRModel, float> DisplayCalOffset { get; set; } = new Dictionary<HPSDRModel, float>();
+        /// <summary>PA gain per radio model (missing = the model's defaults).</summary>
+        public Dictionary<HPSDRModel, PaCalibration> PaGains { get; set; } = new Dictionary<HPSDRModel, PaCalibration>();
+        public AntennaSettings Antennas { get; set; } = AntennaSettings.Defaults();
+        /// <summary>Edited filter band edges (null = defaults).</summary>
+        public FilterEdge[] LpfEdges { get; set; }
+        public FilterEdge[] HpfEdges { get; set; }
+        public FilterEdge[] Bpf1Edges { get; set; }
+
         public double SpectrumMaxDbm { get; set; } = -40.0;
         public double SpectrumMinDbm { get; set; } = -140.0;
         public double SpectrumZoom { get; set; } = 0.0;

@@ -127,7 +127,12 @@ namespace Thetis.Desktop
                 ModelBox.SelectedItem = _settings.Model ?? r.SuggestedModel;
                 _updating = false;
             };
-            ModelBox.SelectionChanged += (_, _) => { if (!_updating && ModelBox.SelectedItem is HPSDRModel m) _settings.Model = m; };
+            ModelBox.SelectionChanged += (_, _) =>
+            {
+                if (_updating || ModelBox.SelectedItem is not HPSDRModel m) return;
+                _settings.Model = m;
+                RefreshAttenuator();                // the range depends on the model
+            };
 
             Vfo.Tuned += hz => Tune(hz / 1e6);
             Vfo.EditRequested += BeginVfoEdit;
@@ -196,6 +201,16 @@ namespace Thetis.Desktop
             };
 
             BuildTransmitControls();
+
+            SetupButton.Click += (_, _) => OpenSetup();
+            AttSlider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property != RangeBase.ValueProperty || _updating) return;
+                int db = (int)Math.Round(AttSlider.Value);
+                _radio.AttenuatorDb = db;
+                _settings.AttenuatorByBand[AttBandKey(_radio.FrequencyMHz)] = db;
+                RefreshAttenuator();
+            };
 
             // keyboard: arrows tune by the step, page up/down by 10 steps
             KeyDown += (_, e) =>
@@ -276,6 +291,50 @@ namespace Thetis.Desktop
             N2adrCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.Hl2N2adrFilterBoard = _settings.Hl2N2adrFilterBoard = N2adrCheck.IsChecked == true; };
         }
 
+        #region setup and calibration
+
+        private HPSDRModel SelectedModel =>
+            _radio.PowerOn ? _radio.Model : ModelBox.SelectedItem is HPSDRModel m ? m : _settings.Model ?? HPSDRModel.HERMES;
+
+        private static string AttBandKey(double mhz) => BandPlan.For(mhz)?.Name ?? "GEN";
+
+        private void OpenSetup()
+        {
+            HPSDRModel model = SelectedModel;
+            ApplyModelCalibration(model);
+            var w = new SetupWindow(_radio, _settings, model, SaveSettings);
+            w.Show(this);
+        }
+
+        /// <summary>Per-model calibration from the settings (before power on, and when setup opens).</summary>
+        private void ApplyModelCalibration(HPSDRModel model)
+        {
+            _radio.PaGains = _settings.PaGains.TryGetValue(model, out PaCalibration pa) ? pa : null;
+            _radio.MeterCalOffsetDb = _settings.MeterCalOffset.TryGetValue(model, out float m) ? m : null;
+            _radio.DisplayCalOffsetDb = _settings.DisplayCalOffset.TryGetValue(model, out float d) ? d : null;
+        }
+
+        /// <summary>The attenuation remembered for the band at the VFO.</summary>
+        private void ApplyBandAttenuator()
+        {
+            _radio.AttenuatorDb = _settings.AttenuatorByBand.TryGetValue(AttBandKey(_radio.FrequencyMHz), out int db) ? db : 0;
+            RefreshAttenuator();
+        }
+
+        private void RefreshAttenuator()
+        {
+            var (lo, hi) = _radio.PowerOn ? _radio.AttenuatorRange : RxFrontEnd.Range(SelectedModel);
+            int db = Math.Clamp(_settings.AttenuatorByBand.TryGetValue(AttBandKey(_radio.FrequencyMHz), out int v) ? v : 0, lo, hi);
+            _updating = true;
+            AttSlider.Minimum = lo;
+            AttSlider.Maximum = hi;
+            AttSlider.Value = db;
+            _updating = false;
+            AttCaption.Text = db < 0 ? $"Attenuator {db} dB (LNA gain +{-db} dB)" : $"Attenuator {db} dB";
+        }
+
+        #endregion
+
         private void ApplyTxFilter()
         {
             _settings.TxFilterLow = (int)(TxLowBox.Value ?? 100);
@@ -308,6 +367,12 @@ namespace Thetis.Desktop
             _radio.MicGainDb = _settings.MicGainDb;
             _radio.MicSource = _settings.MicSource;
             _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
+            if (_settings.LpfEdges != null) BandFilters.LpfEdges = _settings.LpfEdges;
+            if (_settings.HpfEdges != null) BandFilters.HpfEdges = _settings.HpfEdges;
+            if (_settings.Bpf1Edges != null) BandFilters.Bpf1Edges = _settings.Bpf1Edges;
+            _radio.Antennas = _settings.Antennas ??= AntennaSettings.Defaults();
+            if (_settings.Model is HPSDRModel sm) ApplyModelCalibration(sm);
+            ApplyBandAttenuator();
             Panafall.MaxDbm = _settings.SpectrumMaxDbm;
             Panafall.MinDbm = _settings.SpectrumMinDbm;
             Panafall.PanFraction = _settings.PanFraction;
@@ -396,6 +461,7 @@ namespace Thetis.Desktop
                     return;
                 }
                 var target = _radios[RadioBox.SelectedIndex];
+                ApplyModelCalibration(model);
                 PowerButton.IsEnabled = false;
                 string error = null;
                 bool ok = await Task.Run(() => _radio.Start(target, model, out error));
@@ -409,6 +475,7 @@ namespace Thetis.Desktop
                 _settings.LastRadioMac = target.Info.MacAddress;
                 _settings.Model = model;
                 ApplyAudioRouting();
+                ApplyBandAttenuator();
             }
             else
             {
@@ -440,8 +507,10 @@ namespace Thetis.Desktop
         private void Tune(double mhz)
         {
             mhz = Math.Clamp(mhz, 0.0, 61.44);
+            bool newBand = AttBandKey(mhz) != AttBandKey(_radio.FrequencyMHz);
             _radio.FrequencyMHz = mhz;
             _settings.FrequencyMHz = mhz;
+            if (newBand) ApplyBandAttenuator();
             var band = BandPlan.For(mhz);
             if (band != null) _settings.Bands[band.Name] = new BandMemory { FrequencyMHz = mhz, Mode = _radio.Mode };
             RefreshVfo();

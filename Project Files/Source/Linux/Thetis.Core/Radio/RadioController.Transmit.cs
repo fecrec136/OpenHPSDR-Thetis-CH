@@ -195,10 +195,24 @@ namespace Thetis.Radio
         private void ApplyDrive()
         {
             int pwr = _tuning ? _tunePercent : _drivePercent;
+            if (_tuning && _model == HPSDRModel.HERMESLITE)
+            {
+                // the HL2 has only a 16-step output attenuator: low tune powers
+                // lower the tone instead (console SetPowerUsingTargetDBM)
+                if (pwr <= 51)
+                {
+                    WDSP.SetTXAPostGenToneMag(TxChannel, (pwr + 40) / 100.0);
+                    pwr = 0;
+                }
+                else
+                {
+                    WDSP.SetTXAPostGenToneMag(TxChannel, 0.9999);
+                    pwr = (pwr - 54) * 2;
+                }
+            }
             double txMHz = _frequencyMHz;
             Band band = BandPlanRegions.BandFromFrequency(txMHz);
-            float[] gains = HardwareSpecific.DefaultPAGainsForBands(_model);
-            double gbb = band > Band.FIRST && (int)band < gains.Length ? gains[(int)band] : 100.0;
+            double gbb = PaGains.GainFor(band, pwr);         // console GainByBand(TXBand, new_pwr)
             double volume;
             if (pwr == 0 && _model != HPSDRModel.HERMESLITE)
             {
@@ -216,11 +230,28 @@ namespace Thetis.Radio
                 }
                 else
                 {
-                    volume = Math.Min(pwr * (gbb / 100) / 93.75, 1.0);   // HL2: 4-bit drive
+                    volume = Math.Min(Math.Max(pwr, 0) * (gbb / 100) / 93.75, 1.0);   // HL2: 4-bit drive
                 }
             }
             DriveVolume = volume;
             NetworkIO.SetOutputPower((float)(volume * 1.02));    // Audio.RadioVolume
+        }
+
+        private PaCalibration _pa, _paDefaults;
+
+        /// <summary>
+        /// Per-band PA gain (Setup "PA gain" / PA profile).  Null, or set for a
+        /// different model, means the model's defaults.
+        /// </summary>
+        public PaCalibration PaGains
+        {
+            get
+            {
+                if (_pa != null && _pa.Model == _model) return _pa;
+                if (_paDefaults == null || _paDefaults.Model != _model) _paDefaults = PaCalibration.DefaultsFor(_model);
+                return _paDefaults;
+            }
+            set { _pa = value; if (_mox) ApplyDrive(); }
         }
 
         /// <summary>Last drive value sent (0..1, before SWR protection), for tests and display.</summary>
@@ -318,7 +349,7 @@ namespace Thetis.Radio
             NetworkIO.VFOfreq(0, txMHz, 1);
             NetworkIO.SetBPF2Gnd(1);                        // bpf2_gnd default
             BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, txMHz, true, tune);
-            NetworkIO.SetAntBits(0, 1, 1, 0, true);         // ANT1 (Alex default antenna)
+            Antennas.Apply(txMHz, true);                    // Alex.UpdateAlexAntSelection(tx)
             NetworkIO.SetTRXrelay(1);
             NetworkIO.SetPttOut(1);
 
@@ -354,7 +385,7 @@ namespace Thetis.Radio
             NetworkIO.SetTRXrelay(0);
             NetworkIO.VFOfreq(0, _frequencyMHz, 1);
             BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, _frequencyMHz, false, false);
-            NetworkIO.SetAntBits(0, 1, 1, 0, false);
+            Antennas.Apply(_frequencyMHz, false);
             NetworkIO.SetBPF2Gnd(0);
 
             cmaster.LoadRouterControlBit((void*)0, 0, 2, 0);   // cmaster.Mox = false

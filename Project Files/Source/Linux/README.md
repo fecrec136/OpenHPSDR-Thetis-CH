@@ -8,7 +8,14 @@ in stages:
 | 1 | Native libraries: `wdsp`, `ChannelMaster`, `PA19` (PortAudio) | **Done**: builds and passes tests |
 | 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
 | 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
-| 4 | PureSignal, full setup, CAT/TCI, meters, RX2, skins | Not started |
+| 4 | Setup and calibration: attenuator, level calibration, PA gain, filter edges, antennas | **Done**: see [Setup and calibration](#setup-and-calibration) |
+| 5 | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
+| 6 | Transmit audio processing: VOX, TX equaliser, compressor, CFC | Planned |
+| 7 | PureSignal | Planned |
+| 8 | RX2, sub-receiver, band stacking, more meters | Planned |
+
+Protocol 2 radios (ANAN-G2, 7000D, 8000D and similar) are not planned for
+now. The shared code paths exist, but nothing has been tested with them.
 
 ## AppImage: run without installing
 
@@ -262,7 +269,8 @@ discovery, connecting, DDC tuning and retuning, the audio returned to the
 radio (48 kHz, the tone at the expected pitch, and following a retune),
 sideband rejection (about 59 dB), the S-meter, the position and height of the
 spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
-transmit checks are listed under [Transmit](#transmit). All 57 checks pass:
+transmit checks are listed under [Transmit](#transmit), and the setup checks
+under [Setup and calibration](#setup-and-calibration). All 74 checks pass:
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -366,14 +374,67 @@ The simulator decodes transmit I/Q with the same mirrored orientation it
 uses for receive. That is the convention the unmodified Thetis chain uses
 with OpenHPSDR hardware.
 
-### Not yet ported
+## Setup and calibration
 
-PureSignal, EER, VOX, the TX
-equaliser, compressor and CFC controls, two-tone, transverters, diversity,
-RX2 and the sub-receiver, the rest of the setup form (calibration, per-band
-PA gain, relay band edges, ADC assignment, antenna selection, attenuator and
-preamp), band stacking, the MeterManager meters, CAT, TCI, MIDI, recording,
-and skins.
+**Setup** (top bar) opens a window with four tabs. Changes apply to the radio
+immediately and are saved. Values that depend on the radio model (level
+calibration, PA gain) are kept separately for each model.
+
+![Setup window, PA gain tab](docs/screenshot-setup.png)
+
+* **Attenuator** (main window, remembered per band). This is the
+  `RX1AttenuatorData` step attenuator. The range depends on the model:
+  * 0–31 dB on most models.
+  * 0–61 dB on Alex-equipped models such as the Hermes and ANAN-10/100/200,
+    using the 30 dB Alex pad plus the step attenuator above 31 dB.
+  * −28 to +32 dB on the Hermes-Lite 2, where negative values are LNA gain.
+    Its data is sent as `31 − dB`. Before this was ported, an HL2 was left at
+    31 dB of attenuation.
+
+  The S-meter and panadapter add the attenuation back, as the console's
+  `RXPreampOffset` does, so readings stay in dBm at the antenna.
+* **Receive:** S-meter and panadapter offsets (the model's defaults until
+  changed), plus *Calibrate to a known signal*: feed in a carrier of known
+  level near the VFO and both readings are set to it. This is the console's
+  level calibration, with one difference. The console averages
+  `AVG_SIGNAL_STRENGTH` although its S-meter shows `SIGNAL_STRENGTH`; here
+  calibration uses the reading that is displayed, so the S-meter shows the
+  reference level afterwards.
+* **PA gain:** the console's PA profile. Each band has a gain in dB and nine
+  drive-level corrections (10–90 %, interpolated in between), which feed
+  `setPowerFromDriveSlider`. Defaults come from `clsHardwareSpecific` for the
+  model.
+* **Filters:** the Alex LPF and HPF band edges, and the BPF1 edges of
+  OrionMKII and Saturn boards (the Setup form's defaults). The filter set
+  and relay bits are fixed; only the frequency ranges can be edited. The
+  LPF is matched in the console's order, which matters only if edited
+  ranges overlap.
+* **Antennas:** Alex receive and transmit antennas (ANT1–3) and receive-only
+  inputs (RX1 In, RX2 In) per band, and the RX-bypass/Ext inputs while
+  transmitting. This follows `Alex.UpdateAlexAntSelection` and
+  `AntBandFromFreq`, without transverters or the external Aries ATU. The
+  Hermes-Lite 2's I/O board aerial switching is not supported yet.
+
+Also fixed: on the Hermes-Lite 2, low **tune power** now lowers the tune
+tone as the console does (its output attenuator has only 16 steps).
+
+The simulator decodes the step and Alex attenuators, and applies them to
+the signal it sends. It also decodes the antenna relays. `Thetis.CoreCheck`
+covers this area with 17 checks:
+
+* the attenuator ranges and data for the Hermes, HL2 and 7000D
+* S-meter and panadapter compensation with 20 dB of attenuation
+* 40 dB split into the 30 dB pad plus 10 dB step
+* calibration to −50 dBm, after which both read −50.0 dBm
+* antennas per band, on receive and transmit
+* 3 dB less PA gain, and a +3 dB drive correction, each doubling the output
+* edited LPF edges selecting a different filter, then the defaults restored
+
+## Not yet ported
+
+See the stage table at the top for what is planned next. Beyond that list:
+EER, two-tone, transverters, diversity, ADC assignment, the Hermes-Lite 2
+I/O board, the MeterManager meters, MIDI, recording, and skins.
 
 Notes for those stages:
 

@@ -62,6 +62,111 @@ internal static class Program
         return false;
     }
 
+    private static float SpectrumPeak(RadioController radio)
+    {
+        float[] pix = new float[radio.SpectrumPixels];
+        for (int i = 0; i < 50; i++) { if (radio.GetSpectrum(pix)) break; Thread.Sleep(40); }
+        return pix.Max();
+    }
+
+    private static float SettledMeter(RadioController radio)
+    {
+        Thread.Sleep(2500);                         // AGC and meter averaging settle
+        float sum = 0;
+        for (int i = 0; i < 10; i++) { sum += radio.SignalDbm(); Thread.Sleep(50); }
+        return sum / 10;
+    }
+
+    /// <summary>Setup and calibration: attenuator, antennas, PA gain, filter edges, level calibration.</summary>
+    private static void Setup(RadioController radio, string statusFile, double tuneMHz)
+    {
+        Console.WriteLine("== attenuator");
+        radio.Mode = DSPMode.USB;
+        radio.Agc = AGCMode.MED;
+        Check(radio.AttenuatorRange == (0, 61), $"Hermes with Alex: 0..61 dB ({radio.AttenuatorRange})");
+        Check(RxFrontEnd.Data(HPSDRModel.HERMESLITE, 0) == (0, 31) && RxFrontEnd.Data(HPSDRModel.HERMESLITE, -12) == (0, 43),
+              "Hermes-Lite 2: LNA data is 31 - attenuation");
+        Check(RxFrontEnd.Data(HPSDRModel.HERMES, 40) == (3, 42) && RxFrontEnd.Data(HPSDRModel.ANAN7000D, 40) == (0, 31),
+              "above 31 dB: 30 dB Alex pad + step (none on the 7000D, limited to 31)");
+        float m0 = SettledMeter(radio), p0 = SpectrumPeak(radio);
+        radio.AttenuatorDb = 20;
+        WaitSim(statusFile, st => st.GetProperty("step_att_db").GetInt32() == 20, 3000, out var s1);
+        Check(s1.GetProperty("step_att_db").GetInt32() == 20 && s1.GetProperty("alex_att_db").GetInt32() == 0, "20 dB: step attenuator 20 dB, Alex pads off");
+        float m20 = SettledMeter(radio), p20 = SpectrumPeak(radio);
+        Console.WriteLine($"  S-meter {m0:F1} -> {m20:F1} dBm, panadapter peak {p0:F1} -> {p20:F1} dBm");
+        Check(Math.Abs(m20 - m0) < 2.0, "S-meter compensates for the attenuator");
+        Check(Math.Abs(p20 - p0) < 3.0, "panadapter compensates for the attenuator");
+        radio.AttenuatorDb = 40;
+        WaitSim(statusFile, st => st.GetProperty("alex_att_db").GetInt32() == 30, 3000, out s1);
+        Check(s1.GetProperty("alex_att_db").GetInt32() == 30 && s1.GetProperty("step_att_db").GetInt32() == 10,
+              $"40 dB: 30 dB Alex pad + 10 dB step (got {s1.GetProperty("alex_att_db")} + {s1.GetProperty("step_att_db")})");
+        radio.AttenuatorDb = 0;
+        Thread.Sleep(2500);
+
+        Console.WriteLine("== level calibration");
+        Check(radio.CalibrateLevel(-50f, out string err), "calibrate to -50 dBm" + (err == null ? "" : ": " + err));
+        float mc = SettledMeter(radio), pc = SpectrumPeak(radio);
+        Console.WriteLine($"  after calibration: S-meter {mc:F1} dBm, panadapter peak {pc:F1} dBm (offsets {radio.MeterCalOffsetEffective:F1} / {radio.DisplayCalOffsetEffective:F1} dB)");
+        Check(Math.Abs(mc + 50) < 1.5, "S-meter reads the reference level");
+        Check(Math.Abs(pc + 50) < 2.0, "panadapter reads the reference level");
+        radio.MeterCalOffsetDb = null;
+        radio.DisplayCalOffsetDb = null;
+
+        Console.WriteLine("== antennas");
+        var ant = AntennaSettings.Defaults();
+        ant.Bands[Band.B40M] = new BandAntennas { RxAnt = 2, TxAnt = 3, RxOnly = 1 };
+        radio.Antennas = ant;
+        WaitSim(statusFile, st => st.GetProperty("ant").GetInt32() == 2, 3000, out s1);
+        Check(s1.GetProperty("ant").GetInt32() == 2 && s1.GetProperty("rx_only").GetInt32() == 1 && s1.GetProperty("rx_out").GetInt32() == 1,
+              $"40 m receive: ANT2 with the RX1 input (ant {s1.GetProperty("ant")}, rx-only {s1.GetProperty("rx_only")}, rx-out {s1.GetProperty("rx_out")})");
+        radio.FrequencyMHz = 14.2;
+        WaitSim(statusFile, st => st.GetProperty("ant").GetInt32() == 1, 3000, out s1);
+        Check(s1.GetProperty("ant").GetInt32() == 1 && s1.GetProperty("rx_only").GetInt32() == 0, "20 m receive: back to ANT1");
+        radio.FrequencyMHz = tuneMHz;
+
+        radio.TransmitAllowed = true;
+        radio.Region = TxRegion.IaruRegion1;
+        radio.TunePercent = 10;
+        radio.SetTune(true, out _);
+        WaitSim(statusFile, st => st.GetProperty("mox").GetBoolean() && st.GetProperty("ant").GetInt32() == 3, 3000, out s1);
+        Check(s1.GetProperty("ant").GetInt32() == 3 && s1.GetProperty("rx_only").GetInt32() == 0, "40 m transmit: ANT3, receive input off");
+
+        Console.WriteLine("== PA gain");
+        Thread.Sleep(1200);
+        double w0 = SimStatus(statusFile).GetProperty("fwd_w").GetDouble();
+        var pa = PaCalibration.DefaultsFor(HPSDRModel.HERMES);
+        pa.Bands[Band.B40M].GainDb -= 3f;         // a PA with 3 dB less gain: drive 3 dB more for the same watts
+        radio.PaGains = pa;
+        Thread.Sleep(2200);
+        double w1 = SimStatus(statusFile).GetProperty("fwd_w").GetDouble();
+        Console.WriteLine($"  10 % tune: {w0:F2} W with the default gain, {w1:F2} W with 3 dB less");
+        Check(Math.Abs(w1 / w0 - 2.0) < 0.2, "3 dB less PA gain doubles the drive power");
+        pa.Bands[Band.B40M].GainDb += 3f;
+        pa.Bands[Band.B40M].DriveAdjustDb[0] = 3f;   // correction at 10 % drive
+        radio.PaGains = pa;
+        Thread.Sleep(2200);
+        double w2 = SimStatus(statusFile).GetProperty("fwd_w").GetDouble();
+        Check(Math.Abs(w2 / w0 - 2.0) < 0.2, $"a +3 dB correction at 10 % drive doubles it too ({w2:F2} W)");
+        radio.SetTune(false, out _);
+        radio.PaGains = null;
+        radio.Antennas = null;
+        radio.TransmitAllowed = false;
+        radio.Region = TxRegion.None;
+
+        Console.WriteLine("== filter band edges");
+        var lpf = BandFilters.LpfEdges;
+        Array.Find(lpf, e => e.Bits == BandFilters.Lpf60_40).EndMHz = 7.05;
+        Array.Find(lpf, e => e.Bits == BandFilters.Lpf30_20).StartMHz = 7.050001;
+        BandFilters.LpfEdges = lpf;
+        radio.FrequencyMHz = tuneMHz + 0.001;
+        WaitSim(statusFile, st => st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf30_20, 3000, out s1);
+        Check(s1.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf30_20, "edited LPF edges: 7.101 MHz now uses the 30/20 m filter");
+        BandFilters.LpfEdges = BandFilters.DefaultLpfEdges;
+        radio.FrequencyMHz = tuneMHz;
+        WaitSim(statusFile, st => st.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, 3000, out s1);
+        Check(s1.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, "defaults restored");
+    }
+
     private static void Transmit(RadioController radio, string statusFile, double tuneMHz)
     {
         string refused = null;
@@ -256,10 +361,12 @@ internal static class Program
         Check(st.GetProperty("ddc0_hz").GetInt64() == (long)(tuneMHz * 1e6), "DDC0 tuned to 7.100000 MHz");
         Check(st.GetProperty("sample_rate").GetInt32() == 48000, "radio set to 48 kHz");
         Check(st.GetProperty("packets_in").GetInt64() > 100, "host is sending EP2 packets");
-        long a0 = st.GetProperty("audio_samples").GetInt64();
-        Thread.Sleep(2000);
-        long a1 = SimStatus(statusFile).GetProperty("audio_samples").GetInt64();
-        double audioRate = (a1 - a0) / 2.0;
+        // the simulator writes its status once a second: use its own timestamps
+        long a0 = st.GetProperty("audio_samples").GetInt64(), t0 = st.GetProperty("t_ms").GetInt64();
+        Thread.Sleep(3000);
+        var st1 = SimStatus(statusFile);
+        long a1 = st1.GetProperty("audio_samples").GetInt64(), t1 = st1.GetProperty("t_ms").GetInt64();
+        double audioRate = t1 > t0 ? (a1 - a0) * 1000.0 / (t1 - t0) : 0;
         Check(Math.Abs(audioRate - 48000) < 4000, $"radio receives 48 kHz audio (measured {audioRate:F0} samples/s)");
 
         float dbm = radio.SignalDbm();
@@ -306,6 +413,7 @@ internal static class Program
         Check(fixedUsb - fixedLsb > 30, "LSB rejects the upper-sideband carrier by >30 dB");
 
         File.Delete(statusFile + ".ctl");
+        Setup(radio, statusFile, tuneMHz);
         Transmit(radio, statusFile, tuneMHz);
         bool keyed = radio.Mox;
         radio.Stop();

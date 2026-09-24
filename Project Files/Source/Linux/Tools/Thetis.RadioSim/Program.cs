@@ -18,6 +18,8 @@ the Linux build without hardware.  It
     Alex filter and open-collector bits -- and analyses the TX I/Q,
   * models a PA and directional coupler, reporting forward and reflected
     power into a load of chosen SWR,
+  * decodes the step and Alex attenuators (and applies them to the receive
+    signal) and the Alex antenna relays,
   * reads '<status file>.ctl' ({"swr": 3.0, "ptt": true}) to change the
     load SWR or press the radio's PTT input while running.
 
@@ -63,6 +65,13 @@ namespace Thetis.RadioSim
         private static int _paDisable;                     // address 9 C3 bit 7
         private static int _ocBits;                        // address 0 C2 bits 7..1
         private static long _moxFrames;                    // frames received with MOX set
+
+        // --- receive front end and antennas (C0=0 C3/C4, address 10 C4) ---
+        private static int _stepAtt;                       // step attenuator, dB (0..31)
+        private static int _alexAtt;                       // Alex 10/20 dB pads: bits 0..3 -> 0..30 dB
+        private static int _ant = 1;                       // TX/RX antenna relay 1..3
+        private static int _rxOnly;                        // 0 none, 1 RX1 in, 2 RX2 in, 3 XVTR
+        private static int _rxOut;                         // RX bypass out
         private static readonly float[] _txI = new float[24000], _txQ = new float[24000];   // last 0.5 s of TX I/Q
         private static int _txPos;
         private static long _txSamples;
@@ -197,7 +206,13 @@ namespace Thetis.RadioSim
                         _rateBits = c1 & 3;
                         _ocBits = (c2 >> 1) & 0x7f;
                         _nddc = ((c4 >> 3) & 7) + 1;
+                        _alexAtt = c3 & 3;
+                        _rxOnly = (c3 >> 5) & 3;
+                        _rxOut = (c3 >> 7) & 1;
+                        _ant = (c4 & 3) + 1;
                     }
+                    else if (addr == 10)
+                        _stepAtt = (c4 & 0x20) != 0 ? c4 & 0x1f : 0;
                     else if (addr == 1)
                         _txFreq = f32;
                     else if (addr >= 2 && addr <= 8)
@@ -270,9 +285,10 @@ namespace Thetis.RadioSim
                     continue;
                 }
                 if (generation != _startGeneration) { generation = _startGeneration; wasStreaming = false; }
-                int rate, nddc; long[] freqs = new long[8]; IPEndPoint host;
+                int rate, nddc; long[] freqs = new long[8]; IPEndPoint host; double gain;
                 lock (_lock)
                 {
+                    gain = Math.Pow(10.0, -(_stepAtt + 10 * _alexAtt) / 20.0);   // the attenuators act on everything received
                     rate = 48000 << _rateBits;
                     nddc = _nddc;
                     Array.Copy(_ddcFreq, freqs, 8);
@@ -309,7 +325,7 @@ namespace Thetis.RadioSim
                     {
                         for (int d = 0; d < nddc; d++)
                         {
-                            double i = _noise * Gauss(rng), q = _noise * Gauss(rng);
+                            double i = gain * _noise * Gauss(rng), q = gain * _noise * Gauss(rng);
                             for (int c = 0; c < _carriers.Count; c++)
                             {
                                 double offset = _carriers[c].FrequencyHz - freqs[d];
@@ -318,8 +334,8 @@ namespace Thetis.RadioSim
                                 phase[pi] += 2.0 * Math.PI * offset / rate;
                                 if (phase[pi] > Math.PI) phase[pi] -= 2.0 * Math.PI;
                                 else if (phase[pi] < -Math.PI) phase[pi] += 2.0 * Math.PI;
-                                i += _carriers[c].Amplitude * Math.Cos(phase[pi]);
-                                q += _qSign * _carriers[c].Amplitude * Math.Sin(phase[pi]);
+                                i += gain * _carriers[c].Amplitude * Math.Cos(phase[pi]);
+                                q += gain * _qSign * _carriers[c].Amplitude * Math.Sin(phase[pi]);
                             }
                             int k = b + 8 + s * (6 * nddc + 2) + d * 6;
                             Put24(pkt, k, i);
@@ -420,8 +436,12 @@ namespace Thetis.RadioSim
                     double pw = GoertzelComplex(ti, tq, f, 48000);
                     if (pw > txBest) { txBest = pw; txTone = f; }
                 }
-                bool mox; int drive, hpf, lpf, oc, pa; long txf, moxFrames;
-                lock (_lock) { mox = _mox; drive = _drive; hpf = _hpfBits; lpf = _lpfBits; oc = _ocBits; pa = _paDisable; txf = _txFreq; moxFrames = _moxFrames; }
+                bool mox; int drive, hpf, lpf, oc, pa, stepAtt, alexAtt, ant, rxOnly, rxOut; long txf, moxFrames;
+                lock (_lock)
+                {
+                    mox = _mox; drive = _drive; hpf = _hpfBits; lpf = _lpfBits; oc = _ocBits; pa = _paDisable; txf = _txFreq; moxFrames = _moxFrames;
+                    stepAtt = _stepAtt; alexAtt = _alexAtt; ant = _ant; rxOnly = _rxOnly; rxOut = _rxOut;
+                }
 
                 // PA model, the inverse of the host's drive calculation: drive byte ->
                 // 0.8 V full-scale DAC into 50 ohm -> PA gain, times the I/Q power
@@ -433,6 +453,7 @@ namespace Thetis.RadioSim
                 var status = new
                 {
                     streaming = _streaming,
+                    t_ms = Environment.TickCount64,      // when this status was taken
                     sample_rate = rate,
                     nddc,
                     ddc0_hz = rx1,
@@ -455,6 +476,11 @@ namespace Thetis.RadioSim
                     rev_w = Math.Round(fwdW * gamma * gamma, 2),
                     load_swr = _loadSwr,
                     radio_ptt = _radioPtt,
+                    step_att_db = stepAtt,
+                    alex_att_db = 10 * alexAtt,
+                    ant,
+                    rx_only = rxOnly,
+                    rx_out = rxOut,
                 };
                 string json = JsonSerializer.Serialize(status);
                 if (_streaming) Console.WriteLine("radiosim: " + json);

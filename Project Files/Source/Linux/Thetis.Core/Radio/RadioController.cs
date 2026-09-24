@@ -220,6 +220,7 @@ namespace Thetis.Radio
             cmaster.CMLoadRouterAll(model);             // how incoming DDC streams are routed to receivers
             BandFilters.UseN2adrFilterBoard(model == HPSDRModel.HERMESLITE && Hl2N2adrFilterBoard);
             NetworkIO.SetADC_cntrl_P1(DdcSetup.RxAdcCtrlP1);
+            RxFrontEnd.Apply(model, AttenuatorDb);
 
             Report($"Connecting to {ri.IpAddress}...");
             int protocol = NetworkIO.CurrentRadioProtocol == RadioProtocol.USB ? 0 : 1;
@@ -341,8 +342,113 @@ namespace Thetis.Radio
             {
                 NetworkIO.VFOfreq(0, _frequencyMHz, 1);
                 BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, _frequencyMHz, false, false);
+                Antennas.Apply(_frequencyMHz, false);
             }
         }
+
+        /// <summary>Send the band filters and antennas again (after their settings changed).</summary>
+        public void RefreshRelays()
+        {
+            if (!_powerOn) return;
+            lock (_txLock)
+            {
+                if (_mox)
+                {
+                    double txMHz = TxDdsMHz(_tuning);
+                    BandFilters.Apply(HardwareSpecific.Hardware, _frequencyMHz, txMHz, true, _tuning);
+                    _antennas.Apply(txMHz, true);
+                }
+                else
+                    SendFrequency();
+            }
+        }
+
+        /// <summary>Alex antenna selection per band (Setup "Antenna").</summary>
+        public AntennaSettings Antennas
+        {
+            get => _antennas;
+            set
+            {
+                _antennas = value ?? AntennaSettings.Defaults();
+                if (_powerOn) lock (_txLock) _antennas.Apply(_mox ? TxDdsMHz(_tuning) : _frequencyMHz, _mox);
+            }
+        }
+        private AntennaSettings _antennas = AntennaSettings.Defaults();
+
+        #region receive attenuator and calibration
+
+        private int _attenuatorRequested;
+
+        /// <summary>Model whose settings apply (the connected radio's, or the last one used).</summary>
+        public HPSDRModel Model => _model;
+
+        /// <summary>Receive attenuation in dB, within AttenuatorRange (console RX1AttenuatorData).</summary>
+        public int AttenuatorDb
+        {
+            // the requested value is kept as set (the model may not be known yet)
+            // and limited to the connected model's range when used
+            get => Math.Clamp(_attenuatorRequested, AttenuatorRange.min, AttenuatorRange.max);
+            set
+            {
+                _attenuatorRequested = value;
+                if (_powerOn) RxFrontEnd.Apply(_model, AttenuatorDb);
+            }
+        }
+
+        public (int min, int max) AttenuatorRange => RxFrontEnd.Range(_model);
+
+        /// <summary>S-meter calibration in dB (Setup "multimeter offset"); null = the model's default.</summary>
+        public float? MeterCalOffsetDb { get; set; }
+        /// <summary>Panadapter calibration in dB (Setup "display offset"); null = the model's default.</summary>
+        public float? DisplayCalOffsetDb { get; set; }
+
+        public static float DefaultMeterCalOffset(HPSDRModel m) => HardwareSpecific.RXMeterCalbrationOffsetDefaults(m);
+        public static float DefaultDisplayCalOffset(HPSDRModel m) => HardwareSpecific.RXDisplayCalbrationOffsetDefauls(m);
+
+        public float MeterCalOffsetEffective => MeterCalOffsetDb ?? HardwareSpecific.RXMeterCalbrationOffsetDefaults(_model);
+        public float DisplayCalOffsetEffective => DisplayCalOffsetDb ?? HardwareSpecific.RXDisplayCalbrationOffsetDefauls(_model);
+
+        /// <summary>
+        /// console CalibrateLevel: with a signal of known level 'levelDbm' within
+        /// 2.5 kHz of the VFO, set the S-meter and panadapter offsets so both
+        /// read it.  Blocks for about four seconds.  Returns false with 'error'.
+        /// </summary>
+        public bool CalibrateLevel(float levelDbm, out string error)
+        {
+            error = null;
+            if (!_powerOn || !HaveSync) { error = "The radio is not on."; return false; }
+            if (_mox) { error = "Not while transmitting."; return false; }
+
+            Thread.Sleep(2000);                 // console: let AGC and meters settle first
+            const int iterations = 10;
+            double sum = 0;
+            float peak = float.MinValue;
+            float[] pix = new float[SpectrumPixels];
+            var (lo, hi) = SpectrumSpan;
+            for (int i = 0; i < iterations; i++)
+            {
+                // The console averages AVG_SIGNAL_STRENGTH here although its S-meter
+                // shows SIGNAL_STRENGTH by default; calibrate against the reading
+                // that is displayed, so it shows the reference level afterwards.
+                sum += WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.SIGNAL_STRENGTH);
+                for (int t = 0; t < 10 && !GetSpectrum(pix); t++) Thread.Sleep(20);
+                for (int k = 0; k < pix.Length; k++)
+                {
+                    double hz = lo + (hi - lo) * (double)k / Math.Max(1, pix.Length - 1);
+                    if (Math.Abs(hz) <= 2500 && pix[k] > peak) peak = pix[k];
+                }
+                Thread.Sleep(150);
+            }
+            float avg = (float)(sum / iterations);
+            if (avg < -250f || peak == float.MinValue) { error = "No signal measured."; return false; }
+
+            // meter: level = avg + meterCal + attenuation;  panadapter: pixels already include both offsets
+            MeterCalOffsetDb = levelDbm - (avg + AttenuatorDb);
+            DisplayCalOffsetDb = DisplayCalOffsetEffective + (levelDbm - peak);
+            return true;
+        }
+
+        #endregion
 
         /// <summary>Hermes-Lite 2 with the N2ADR filter board: drive its relays from the OC outputs.</summary>
         public bool Hl2N2adrFilterBoard { get; set; }
@@ -515,7 +621,8 @@ namespace Thetis.Radio
         {
             if (!_powerOn) return -140f;
             float v = WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.SIGNAL_STRENGTH);
-            return v + HardwareSpecific.RXMeterCalbrationOffsetDefaults(_model);
+            // console: meter + RXCalibrationOffset + RXPreampOffset (the step attenuation)
+            return v + MeterCalOffsetEffective + AttenuatorDb;
         }
 
         public static string SUnits(float dbm)
@@ -571,7 +678,7 @@ namespace Thetis.Radio
             fixed (float* p = pixels)
                 SpecHPSDRDLL.GetPixels(0, waterfall ? 1 : 0, p, ref flag);
             if (flag == 0) return false;
-            float offset = HardwareSpecific.RXDisplayCalbrationOffsetDefauls(_model);
+            float offset = DisplayCalOffsetEffective + AttenuatorDb;   // RX1DisplayCalOffset + RX1PreampOffset
             if (offset != 0f)
                 for (int i = 0; i < pixels.Length; i++) pixels[i] += offset;
             return true;

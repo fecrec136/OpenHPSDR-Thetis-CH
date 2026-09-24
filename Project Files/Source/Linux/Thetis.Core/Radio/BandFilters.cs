@@ -25,6 +25,7 @@ of the License, or (at your option) any later version.
 
 */
 
+using System;
 using System.Collections.Generic;
 
 namespace Thetis.Radio
@@ -39,34 +40,68 @@ namespace Thetis.Radio
                          Lpf6 = 0x10, Lpf12_10 = 0x20, Lpf17_15 = 0x40;
 
         // --- defaults from setup.designer.cs (udAlex*LPF*, udAlex*HPF*, ud*BPF1*) ---
-        private static readonly (double start, double end, int bits)[] _lpf =
+        private static FilterEdge[] DefaultLpf() => new[]
         {
-            (8.000001, 16.5, Lpf30_20),     // udAlex20mLPF
-            (5.000001, 8.0, Lpf60_40),      // udAlex40mLPF
-            (2.500001, 5.0, Lpf80),         // udAlex80mLPF
-            (0.0, 2.5, Lpf160),             // udAlex160mLPF
-            (35.600001, 61.44, Lpf6),       // udAlex6mLPF
-            (24.000001, 35.6, Lpf12_10),    // udAlex10mLPF
-            (16.500001, 24.0, Lpf17_15),    // udAlex15mLPF
+            new FilterEdge("160 m", 0.0, 2.5, Lpf160),              // udAlex160mLPF
+            new FilterEdge("80 m", 2.500001, 5.0, Lpf80),           // udAlex80mLPF
+            new FilterEdge("60/40 m", 5.000001, 8.0, Lpf60_40),     // udAlex40mLPF
+            new FilterEdge("30/20 m", 8.000001, 16.5, Lpf30_20),    // udAlex20mLPF
+            new FilterEdge("17/15 m", 16.500001, 24.0, Lpf17_15),   // udAlex15mLPF
+            new FilterEdge("12/10 m", 24.000001, 35.6, Lpf12_10),   // udAlex10mLPF
+            new FilterEdge("6 m", 35.600001, 61.44, Lpf6),          // udAlex6mLPF
         };
-        private static readonly (double start, double end, int bits)[] _alexHpf =
+        private static FilterEdge[] DefaultAlexHpf() => new[]
         {
-            (1.8, 6.499999, Hpf1_5MHz),     // udAlex1_5HPF
-            (6.5, 9.499999, Hpf6_5MHz),     // udAlex6_5HPF
-            (9.5, 12.999999, Hpf9_5MHz),    // udAlex9_5HPF
-            (13.0, 19.999999, Hpf13MHz),    // udAlex13HPF
-            (20.0, 49.999999, Hpf20MHz),    // udAlex20HPF
-            (50.0, 61.44, Bpf6mLna),        // udAlex6BPF
+            new FilterEdge("1.5 MHz", 1.8, 6.499999, Hpf1_5MHz),    // udAlex1_5HPF
+            new FilterEdge("6.5 MHz", 6.5, 9.499999, Hpf6_5MHz),    // udAlex6_5HPF
+            new FilterEdge("9.5 MHz", 9.5, 12.999999, Hpf9_5MHz),   // udAlex9_5HPF
+            new FilterEdge("13 MHz", 13.0, 19.999999, Hpf13MHz),    // udAlex13HPF
+            new FilterEdge("20 MHz", 20.0, 49.999999, Hpf20MHz),    // udAlex20HPF
+            new FilterEdge("6 m LNA", 50.0, 61.44, Bpf6mLna),       // udAlex6BPF
         };
-        private static readonly (double start, double end, int bits)[] _bpf1 =
+        private static FilterEdge[] DefaultBpf1() => new[]
         {
-            (1.5, 2.099999, Hpf1_5MHz),     // ud1_5BPF1
-            (2.1, 5.499999, Hpf6_5MHz),     // ud6_5BPF1
-            (5.5, 10.999999, Hpf9_5MHz),    // ud9_5BPF1
-            (11.0, 21.999999, Hpf13MHz),    // ud13BPF1
-            (22.0, 34.999999, Hpf20MHz),    // ud20BPF1
-            (35.0, 61.44, Bpf6mLna),        // ud6BPF1
+            new FilterEdge("1.5 MHz", 1.5, 2.099999, Hpf1_5MHz),    // ud1_5BPF1
+            new FilterEdge("6.5 MHz", 2.1, 5.499999, Hpf6_5MHz),    // ud6_5BPF1
+            new FilterEdge("9.5 MHz", 5.5, 10.999999, Hpf9_5MHz),   // ud9_5BPF1
+            new FilterEdge("13 MHz", 11.0, 21.999999, Hpf13MHz),    // ud13BPF1
+            new FilterEdge("20 MHz", 22.0, 34.999999, Hpf20MHz),    // ud20BPF1
+            new FilterEdge("6 m LNA", 35.0, 61.44, Bpf6mLna),       // ud6BPF1
         };
+
+        private static readonly int[] _lpfPrecedence = { Lpf30_20, Lpf60_40, Lpf80, Lpf160, Lpf6, Lpf12_10, Lpf17_15 };
+
+        private static FilterEdge[] _lpf = DefaultLpf(), _alexHpf = DefaultAlexHpf(), _bpf1 = DefaultBpf1();
+
+        /// <summary>Alex low-pass filter ranges (Setup "Alex LPF" band edges).</summary>
+        public static FilterEdge[] LpfEdges { get => Copy(_lpf); set => _lpf = Validated(value, DefaultLpf()); }
+        /// <summary>Alex high-pass filter ranges (Setup "Alex HPF").</summary>
+        public static FilterEdge[] HpfEdges { get => Copy(_alexHpf); set => _alexHpf = Validated(value, DefaultAlexHpf()); }
+        /// <summary>BPF1 ranges for OrionMKII, Saturn and HermesC10 boards (Setup "BPF1").</summary>
+        public static FilterEdge[] Bpf1Edges { get => Copy(_bpf1); set => _bpf1 = Validated(value, DefaultBpf1()); }
+
+        public static FilterEdge[] DefaultLpfEdges => DefaultLpf();
+        public static FilterEdge[] DefaultHpfEdges => DefaultAlexHpf();
+        public static FilterEdge[] DefaultBpf1Edges => DefaultBpf1();
+
+        private static FilterEdge[] Copy(FilterEdge[] a) =>
+            Array.ConvertAll(a, e => new FilterEdge(e.Name, e.StartMHz, e.EndMHz, e.Bits));
+
+        /// <summary>Keep the filter set (names and relay bits) fixed; take only sane edges from 'edges'.</summary>
+        private static FilterEdge[] Validated(FilterEdge[] edges, FilterEdge[] defaults)
+        {
+            if (edges == null) return defaults;
+            foreach (FilterEdge d in defaults)
+            {
+                FilterEdge e = Array.Find(edges, x => x != null && x.Bits == d.Bits);
+                if (e != null && e.StartMHz >= 0 && e.EndMHz > e.StartMHz && e.EndMHz <= 61.44)
+                {
+                    d.StartMHz = e.StartMHz;
+                    d.EndMHz = e.EndMHz;
+                }
+            }
+            return defaults;
+        }
 
         /// <summary>Alex / BPF board fitted (Setup "Alex present"; on for every model by default).</summary>
         public static bool AlexPresent { get; set; } = true;
@@ -98,10 +133,11 @@ namespace Thetis.Radio
                 return;
             }
             var table = UsesBpf1(hardware) ? _bpf1 : _alexHpf;
-            foreach (var (start, end, b) in table)
+            foreach (FilterEdge e in table)
             {
-                if (freqMHz >= start && freqMHz <= end)
+                if (freqMHz >= e.StartMHz && freqMHz <= e.EndMHz)
                 {
+                    int b = e.Bits;
                     bits = b;
                     if (b == Bpf6mLna && (Disable6mLnaOnRx || (mox && Disable6mLnaOnTx)))
                         bits = HpfBypass;
@@ -122,9 +158,11 @@ namespace Thetis.Radio
         {
             if (!AlexPresent) return;
             int bits = Lpf6;            // console default when no range matches
-            foreach (var (start, end, b) in _lpf)
+            // first match wins, in setAlexLPF's order (matters only if edited ranges overlap)
+            foreach (int want in _lpfPrecedence)
             {
-                if (freqMHz >= start && freqMHz <= end) { bits = b; break; }
+                FilterEdge e = Array.Find(_lpf, x => x.Bits == want);
+                if (e != null && freqMHz >= e.StartMHz && freqMHz <= e.EndMHz) { bits = e.Bits; break; }
             }
             NetworkIO.SetAlexLPFBits(bits, freqIsTx, mox);
             LastLpfBits = bits;
@@ -204,5 +242,19 @@ namespace Thetis.Radio
         }
 
         #endregion
+    }
+
+    /// <summary>One filter's frequency range (MHz) and the relay bits that select it.</summary>
+    public sealed class FilterEdge
+    {
+        public FilterEdge() { }
+        public FilterEdge(string name, double startMHz, double endMHz, int bits)
+        {
+            Name = name; StartMHz = startMHz; EndMHz = endMHz; Bits = bits;
+        }
+        public string Name { get; set; }
+        public double StartMHz { get; set; }
+        public double EndMHz { get; set; }
+        public int Bits { get; set; }
     }
 }
