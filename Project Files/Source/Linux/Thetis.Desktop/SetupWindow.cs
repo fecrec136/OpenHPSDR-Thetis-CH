@@ -24,6 +24,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
+using Thetis.Desktop.Controls;
 using Thetis.Radio;
 
 namespace Thetis.Desktop
@@ -58,17 +60,18 @@ namespace Thetis.Desktop
             tabs.Items.Add(new TabItem { Header = "Noise reduction", Content = Scroll(NoiseTab()) });
             _txTab = new TabItem { Header = "Transmit audio", Content = Scroll(TxTab()) };
             tabs.Items.Add(_txTab);
+            tabs.Items.Add(new TabItem { Header = "PureSignal", Content = Scroll(PureSignalTab()) });
             tabs.Items.Add(new TabItem { Header = "PA gain", Content = Scroll(PaTab()) });
             tabs.Items.Add(new TabItem { Header = "Filters", Content = Scroll(FiltersTab()) });
             tabs.Items.Add(new TabItem { Header = "Antennas", Content = Scroll(AntennaTab()) });
             Content = tabs;
-            Closed += (_, _) => _save();
+            Closed += (_, _) => { _psTimer?.Stop(); _save(); };
         }
 
         private readonly TabControl _tabs;
 
         /// <summary>The tab headers, in order (the main window's Setup menu lists them).</summary>
-        public static readonly string[] TabNames = { "Receive", "Noise reduction", "Transmit audio", "PA gain", "Filters", "Antennas" };
+        public static readonly string[] TabNames = { "Receive", "Noise reduction", "Transmit audio", "PureSignal", "PA gain", "Filters", "Antennas" };
 
         /// <summary>Bring the tab with this header to the front.</summary>
         public void ShowTab(string header)
@@ -482,6 +485,143 @@ namespace Thetis.Desktop
             var r = (double[])defaults.Clone();
             if (a != null) Array.Copy(a, r, Math.Min(a.Length, r.Length));
             return r;
+        }
+
+        #endregion
+
+        #region PureSignal
+
+        private DispatcherTimer _psTimer;
+
+        private PureSignalSettings Ps => _settings.PureSignal ??= new PureSignalSettings();
+
+        private void ApplyPs()
+        {
+            if (!_building) _radio?.ApplyPureSignalSettings();
+        }
+
+        /// <summary>One correction file per radio model and band (corrections do not carry across bands).</summary>
+        private string PsFile()
+        {
+            string band = _radio != null ? BandPlan.For(_radio.FrequencyMHz)?.Name ?? "GEN" : "GEN";
+            return System.IO.Path.Combine(Settings.DataDirectory, "puresignal", $"{_model}-{band}.txt");
+        }
+
+        private Control PureSignalTab()
+        {
+            var ps = Ps;
+            var p = new StackPanel { Spacing = 4 };
+            p.Children.Add(Text("PureSignal corrects the distortion of the transmitter's power amplifier. While transmitting, the radio returns " +
+                                "a sample of its output; WDSP compares it with the signal sent and predistorts the transmit signal so the " +
+                                "output matches. Turn it on with PS-A on the main window, then transmit - the 2-TONE test signal calibrates " +
+                                "best. Auto-attenuate sets the TX attenuator so the feedback level is in range (128-181).", true));
+            if (_model == HPSDRModel.HERMESLITE)
+                p.Children.Add(Text("Hermes-Lite 2: PureSignal needs the 192 kHz sample rate.", true));
+
+            p.Children.Add(Heading("Status"));
+            var status = Text("", false);
+            var curves = new PsCurveView { Height = 180, Margin = new Thickness(0, 4) };
+            p.Children.Add(status);
+            p.Children.Add(curves);
+
+            var buttons = new WrapPanel();
+            Button B(string label, Action click)
+            {
+                var b = new Button { Content = label, Margin = new Thickness(0, 4, 6, 4) };
+                b.Click += (_, _) => click();
+                buttons.Children.Add(b);
+                return b;
+            }
+            var result = Text("", true);
+            B("Calibrate once", () => { _radio?.PureSignalSingleCal(); result.Text = "Calibrates on the next transmission, then keeps that correction."; });
+            B("Reset", () => { _radio?.PureSignalReset(); _settings.PureSignalAutoCal = false; result.Text = "PureSignal off, correction discarded."; });
+            B("Save correction", () =>
+            {
+                if (_radio == null) return;
+                result.Text = _radio.PureSignalSave(PsFile(), out string e) ? "Saved to " + PsFile() : e;
+            });
+            B("Restore correction", () =>
+            {
+                if (_radio == null) return;
+                result.Text = _radio.PureSignalRestore(PsFile(), out string e) ? "Restored from " + PsFile() : e;
+            });
+            p.Children.Add(buttons);
+            p.Children.Add(result);
+
+            var g = Grid2();
+            p.Children.Add(Heading("Settings"));
+            TxCheck2(g, "Auto-attenuate", ps.AutoAttenuate, v => ps.AutoAttenuate = v);
+            int attMin = _model == HPSDRModel.HERMESLITE ? -28 : 0;
+            var att = Number(_radio?.TxAttenuationDb ?? 31, attMin, 31, 1, "0", 130);
+            att.ValueChanged += (_, _) =>
+            {
+                if (_building || _radio == null || att.Value is not decimal v) return;
+                _radio.TxAttenuationDb = (int)v;
+                string band = BandPlan.For(_radio.FrequencyMHz)?.Name ?? "GEN";
+                (_settings.TxAttenuationByBand ??= new Dictionary<string, int>())[band] = (int)v;
+            };
+            AddRow(g, "TX attenuator, this band (dB)", att);
+            var peak = Number(ps.HwPeak ?? _radio?.DefaultPureSignalPeak ?? 0.4072, 0.01, 2.0, 0.0001, "0.0000", 130);
+            peak.ValueChanged += (_, _) => { if (peak.Value is decimal v) { ps.HwPeak = (double)v; ApplyPs(); } };
+            AddRow(g, "Hardware peak", peak);
+            var defPeak = new Button { Content = "Default peak", Margin = new Thickness(2) };
+            defPeak.Click += (_, _) =>
+            {
+                ps.HwPeak = null;
+                _building = true;
+                peak.Value = (decimal)(_radio?.DefaultPureSignalPeak ?? 0.4072);
+                _building = false;
+                ApplyPs();
+            };
+            AddRow(g, "", defPeak);
+            PsNumber(g, "MOX delay (s)", ps.MoxDelay, 0, 10, 0.1, "0.0", v => ps.MoxDelay = v);
+            PsNumber(g, "Wait between calibrations (s)", ps.CalWait, 0, 100, 0.1, "0.0", v => ps.CalWait = v);
+            PsNumber(g, "TX delay (ns)", ps.TxDelayNs, -25000, 25000, 10, "0", v => ps.TxDelayNs = v);
+            TxCheck2(g, "Relax tolerance", ps.RelaxTolerance, v => ps.RelaxTolerance = v);
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("Two-tone test signal"));
+            PsNumber(g, "Tone 1 (Hz)", ps.TwoToneFreq1, 50, 5000, 10, "0", v => ps.TwoToneFreq1 = v);
+            PsNumber(g, "Tone 2 (Hz)", ps.TwoToneFreq2, 50, 5000, 10, "0", v => ps.TwoToneFreq2 = v);
+            PsNumber(g, "Level (dB)", ps.TwoToneLevelDb, -60, 0, 1, "0", v => ps.TwoToneLevelDb = v);
+            p.Children.Add(g);
+
+            // live status and curves
+            double[] ax = new double[512], ay = new double[512], fx = new double[512], fy = new double[512];
+            _psTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _psTimer.Tick += (_, _) =>
+            {
+                if (_radio == null || !_radio.PowerOn) { status.Text = "The radio is off."; curves.SetCurves(null, null, null, null); return; }
+                var st = _radio.PureSignalStatus;
+                status.Text = $"PS-A {(st.AutoCal ? "on" : "off")}, engine {st.State}, calibrations {st.CalibrationCount}, " +
+                              $"{st.LevelText} ({st.FeedbackLevel}), correction {(st.CorrectionsApplied ? (st.Correcting ? "applied" : "kept") : "none")}, " +
+                              $"TX attenuator {st.TxAttenuationDb} dB, peak {st.MaxTx:0.0000}";
+                if (_radio.PureSignalCurves(ax, ay, fx, fy)) curves.SetCurves(ax, ay, fx, fy);
+                else curves.SetCurves(null, null, null, null);
+                if (!att.IsFocused && (int)(att.Value ?? 0) != st.TxAttenuationDb)
+                {
+                    _building = true;
+                    att.Value = st.TxAttenuationDb;
+                    _building = false;
+                }
+            };
+            _psTimer.Start();
+            return p;
+        }
+
+        private void PsNumber(Grid g, string label, double value, double min, double max, double step, string fmt, Action<double> set)
+        {
+            var n = Number(value, min, max, step, fmt, 130);
+            n.ValueChanged += (_, _) => { if (n.Value is decimal v) { set((double)v); ApplyPs(); } };
+            AddRow(g, label, n);
+        }
+
+        private void TxCheck2(Grid g, string label, bool value, Action<bool> set)
+        {
+            var c = new CheckBox { IsChecked = value };
+            c.IsCheckedChanged += (_, _) => { set(c.IsChecked == true); ApplyPs(); };
+            AddRow(g, label, c);
         }
 
         #endregion

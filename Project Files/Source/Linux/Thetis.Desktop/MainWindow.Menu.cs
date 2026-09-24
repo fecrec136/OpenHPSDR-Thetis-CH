@@ -150,6 +150,15 @@ namespace Thetis.Desktop
                 Check("_Phase rotator", tx.PhaseRotatorOn, () => SetTx(() => tx.PhaseRotatorOn = !tx.PhaseRotatorOn)),
                 Check("Downward e_xpander", tx.ExpanderOn, () => SetTx(() => tx.ExpanderOn = !tx.ExpanderOn)),
                 Item("Transmit _audio settings...", () => OpenSetup("Transmit audio")),
+                Sub("P_ureSignal", new List<Control>
+                {
+                    Check("PS-A (calibrate while _transmitting)", _settings.PureSignalAutoCal, () => PsToggle.IsChecked = !_settings.PureSignalAutoCal),
+                    Check("_Two-tone test signal", _radio.TwoToneOn, () => TwoToneToggle.IsChecked = !_radio.TwoToneOn, on),
+                    Item("_Calibrate once", () => _radio.PureSignalSingleCal(), enabled: on),
+                    Item("_Reset (discard the correction)", () => { _radio.PureSignalReset(); _settings.PureSignalAutoCal = false; RefreshTx(); }, enabled: on),
+                    new Separator(),
+                    Item("PureSignal _settings...", () => OpenSetup("PureSignal")),
+                }),
                 new Separator(),
                 Sub("M_icrophone", mics),
                 new Separator(),

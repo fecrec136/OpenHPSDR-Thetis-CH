@@ -12,7 +12,7 @@ in stages:
 | 5 | WDSP 2.10, and AetherSDR's receive noise reduction: NR2, RN2, NR4, DFNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
 | 6 | Transmit audio processing: VOX, TX equaliser, leveler, compressor, CESSB, CFC, phase rotator | **Done**: see [Transmit audio processing](#transmit-audio-processing) |
 | 6a | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
-| 7 | PureSignal | Planned |
+| 7 | PureSignal | **Done**: see [PureSignal](#puresignal) |
 | 8 | RX2, sub-receiver, band stacking, more meters | Planned |
 
 Protocol 2 radios (ANAN-G2, 7000D, 8000D and similar) are not planned for
@@ -208,6 +208,11 @@ common base:
   and 2.10 removed. `psccF` still works. The pin, map, stabilize, ptol and
   ints/spi settings no longer exist in 2.10's calibration, so they are
   accepted and ignored.
+* 2.10 changed `GetPSDisp` to return correction curves (11 arguments). Thetis'
+  AmpView still passes 7, which would make WDSP write through four stray
+  pointers. The 2.10 function is renamed `GetPSDisp2`, and `GetPSDisp` keeps
+  the 7-argument form: it returns the collected samples, and zeroes the
+  coefficient arrays, which 2.10 no longer computes.
 * Bug fixes from AetherSDR's own 2.10 tree
   (`third_party/wdsp/AETHERSDR-PATCHES.md`, patches 1–9):
   * a use-after-free in `SetRXAFMNCde`/`SetTXAFMEmphNC` on every channel
@@ -397,8 +402,8 @@ spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
 transmit checks are listed under [Transmit](#transmit), the setup checks
 under [Setup and calibration](#setup-and-calibration), the noise reduction
 checks under [Noise reduction](#noise-reduction), and the transmit audio
-checks under [Transmit audio processing](#transmit-audio-processing). All 92
-checks pass:
+checks under [Transmit audio processing](#transmit-audio-processing), and
+the PureSignal checks under [PureSignal](#puresignal). All 103 checks pass:
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -646,6 +651,78 @@ CoreCheck tests this against the transmitted I/Q:
 * the phase rotator keeps the tone and its level
 * VOX: silent microphone stays in receive, speech keys (source VOX), silence
   unkeys after the hold time, and VOX does not key while transmit is disabled
+
+## PureSignal
+
+![Setup window, PureSignal page](docs/screenshot-puresignal.png)
+
+PureSignal corrects the distortion of the transmitter's power amplifier.
+While transmitting, the radio returns two extra streams: the signal sent to
+the DAC, and a sample of the PA output from the coupler. WDSP's `calcc`
+compares them and predistorts the transmit signal so that the output
+matches the input.
+
+How to use it:
+1. Turn on **PS-A** on the main window (next to VOX, COMP and EQ).
+2. Transmit. The **2-TONE** test signal calibrates best.
+3. The line under the buttons shows what PureSignal is doing: calibrating,
+   correcting, or keeping a correction. It also shows the feedback level
+   (good between 128 and 181) and the TX attenuator.
+
+**Setup → PureSignal** has:
+* the settings
+* **Calibrate once**, **Reset**, and **Save** / **Restore** of the
+  correction (one file per radio model and band, in
+  `~/.local/share/thetis-linux/puresignal/`)
+* a live plot of the amplitude and phase correction curves
+
+The **Transmit → PureSignal** menu has the same controls.
+
+The port follows the console. The files are
+`Thetis.Core/Radio/RadioController.PureSignal.cs` and `DdcSetup.cs`.
+* **PSForm without the form:**
+  * the command state machine (`timer1code`: auto-calibrate, single
+    calibrate, stay on, turn off, restore)
+  * auto-attenuate (`timer2code`)
+  * `PSEnabled`: the feedback DDCs, `SetPureSignal`, the router control bit
+    and `SetPSRunCal`
+  * the defaults of `PSForm.designer.cs` and the models' hardware peaks
+* **Transmit-state DDC configuration:** `console.UpdateDDCs` with its MOX and
+  PureSignal branches. Hermes-class radios switch to 192 kHz while
+  transmitting with PureSignal, and the 5-DDC ANAN radios use their PS DDC
+  configuration.
+* **TX step attenuator** ("ATT on TX"), which auto-attenuate adjusts. It is
+  remembered per band. The Hermes-Lite 2 range goes down to −28 dB (gain).
+* **Two-tone test signal** (`setup.cs chkTestIMD`): tones and level in Setup.
+* **One change from the console:** auto-attenuate reacts to every finished
+  calibration attempt. PSForm compares the attempt count with the reading
+  taken 10 ms earlier, so it only notices attempts that end in that window.
+  In testing, that left the feedback level out of range for 30 seconds.
+
+**Hermes-Lite 2:** PureSignal needs the 192 kHz sample rate. The HL2 keeps
+its receive rate while transmitting (MI0BOT), and WDSP's calibration does
+not work with a 48 kHz feedback stream. The main window says so when PS-A
+is on at another rate.
+
+**Testing:** the simulator models a PA with Rapp AM-AM compression and AM-PM
+phase shift. It returns the coupler sample and the DAC signal on DDC2/DDC3,
+through the TX attenuator, at the hardware peak the host expects (0.4072, or
+0.233 for the HL2). It also measures the PA output's third-order IMD. The
+CoreCheck PureSignal checks:
+
+| | Hermes | Hermes-Lite 2 (192 kHz) |
+|---|---|---|
+| IMD3 without PureSignal (70 % drive) | −21.2 dBc | −18.5 dBc |
+| IMD3 with PureSignal | −48.2 dBc | −46.4 dBc |
+| TX attenuator set by auto-attenuate (from 31 dB) | 4 dB | −11 dB |
+
+The checks also cover:
+* the feedback streams requested, at 192 kHz while transmitting
+* the correction saved, removed by Reset, and applied again from the file
+* receiving at the normal rate after unkeying
+
+Not tested yet: a real radio. The simulator's PA is a model, and the
+feedback path of real hardware (coupler, attenuator, timing) will differ.
 
 ## Not yet ported
 

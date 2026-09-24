@@ -71,6 +71,10 @@ namespace Thetis.Desktop
         public int TxFilterHigh { get; set; } = 3000;
         /// <summary>Leveler, compressor, CESSB, EQ, CFC, phase rotator, VOX and expander.</summary>
         public TxProcessing TxProcessing { get; set; } = new TxProcessing();
+        /// <summary>PureSignal settings; PS-A (calibrate continuously) on or off; TX attenuator per band.</summary>
+        public PureSignalSettings PureSignal { get; set; } = new PureSignalSettings();
+        public bool PureSignalAutoCal { get; set; }
+        public Dictionary<string, int> TxAttenuationByBand { get; set; } = new Dictionary<string, int>();
 
         // setup and calibration
         /// <summary>Receive attenuation per band ("GEN" outside the bands), dB.</summary>

@@ -2252,7 +2252,7 @@ void GetPSMaxTX (int channel, double* maxtx)
 }
 
 PORT
-void GetPSDisp (int channel, double* x, double* ym, double* yc, double* ys,
+void GetPSDisp2 (int channel, double* x, double* ym, double* yc, double* ys,
 		double* xm_cor, double* ym_cor, double* xa_cor, double* ya_cor,
 		int* nsamps_out, int* cpts_out, double* phs_ref_deg_out)
 {
@@ -2271,6 +2271,36 @@ void GetPSDisp (int channel, double* x, double* ym, double* yc, double* ys,
 	*cpts_out        = DISP_PTS;
 	*phs_ref_deg_out = a->disp.phs_ref_deg;
 	LeaveCriticalSection (&a->disp.cs_disp);
+}
+
+/* Thetis: the console's AmpView calls GetPSDisp with 1.29's 7 arguments; see pscompat.c */
+#define PSCOMPAT_MAX_SAMPS 4096     /* AmpView.cs max_samps */
+#define PSCOMPAT_MAX_INTS  16       /* AmpView.cs max_ints: cm/cc/cs hold 4 * max_ints */
+#define PSCOMPAT_CPTS      DISP_PTS
+
+PORT
+void GetPSDisp (int channel, double* x, double* ym, double* yc, double* ys, double* cm, double* cc, double* cs)
+{
+	CALCC a = txa[channel].calcc.p;
+	int n = a->nsamps > 0 ? a->nsamps : 1, got = 0, cpts = 0;
+	double phs = 0.0;
+	double* buf = (double*) malloc ((4 * (size_t)n + 4 * PSCOMPAT_CPTS) * sizeof (double));
+	if (buf)
+	{
+		double* c = buf + 4 * (size_t)n;
+		GetPSDisp2 (channel, buf, buf + n, buf + 2 * n, buf + 3 * n,
+			c, c + PSCOMPAT_CPTS, c + 2 * PSCOMPAT_CPTS, c + 3 * PSCOMPAT_CPTS, &got, &cpts, &phs);
+		if (got > PSCOMPAT_MAX_SAMPS) got = PSCOMPAT_MAX_SAMPS;
+		if (got < 0) got = 0;
+		memcpy (x,  buf,         got * sizeof (double));
+		memcpy (ym, buf + n,     got * sizeof (double));
+		memcpy (yc, buf + 2 * n, got * sizeof (double));
+		memcpy (ys, buf + 3 * n, got * sizeof (double));
+		free (buf);
+	}
+	memset (cm, 0, 4 * PSCOMPAT_MAX_INTS * sizeof (double));
+	memset (cc, 0, 4 * PSCOMPAT_MAX_INTS * sizeof (double));
+	memset (cs, 0, 4 * PSCOMPAT_MAX_INTS * sizeof (double));
 }
 
 PORT

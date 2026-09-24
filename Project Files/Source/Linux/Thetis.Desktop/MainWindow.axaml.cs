@@ -24,6 +24,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Thetis.Audio;
 using Thetis.Radio;
@@ -261,6 +262,19 @@ namespace Thetis.Desktop
                 _radio.MicGainDb = _settings.MicGainDb = Math.Round(MicGainSlider.Value);
                 RefreshTxCaptions();
             };
+            PsToggle.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _radio.PureSignalAutoCal = _settings.PureSignalAutoCal = PsToggle.IsChecked == true;
+                RefreshTxMeters();
+            };
+            TwoToneToggle.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                if (!_radio.SetTwoTone(TwoToneToggle.IsChecked == true, out string why)) StatusText.Text = why;
+                RefreshTx();
+            };
+            _radio.TxAttenuationChanged += db => Dispatcher.UIThread.Post(() => _settings.TxAttenuationByBand[AttBandKey(_radio.FrequencyMHz)] = db);
             VoxToggle.IsCheckedChanged += (_, _) =>
             {
                 if (_updating) return;
@@ -365,6 +379,8 @@ namespace Thetis.Desktop
         private void ApplyBandAttenuator()
         {
             _radio.AttenuatorDb = _settings.AttenuatorByBand.TryGetValue(AttBandKey(_radio.FrequencyMHz), out int db) ? db : 0;
+            // TX attenuator for PureSignal, per band (auto-attenuate adjusts and saves it)
+            _radio.TxAttenuationDb = _settings.TxAttenuationByBand != null && _settings.TxAttenuationByBand.TryGetValue(AttBandKey(_radio.FrequencyMHz), out int tx) ? tx : 31;
             RefreshAttenuator();
         }
 
@@ -423,6 +439,9 @@ namespace Thetis.Desktop
             _radio.MicSource = _settings.MicSource;
             _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
             _radio.TxProcessing = _settings.TxProcessing ??= new TxProcessing();
+            _radio.PureSignal = _settings.PureSignal ??= new PureSignalSettings();
+            _settings.TxAttenuationByBand ??= new Dictionary<string, int>();
+            _radio.PureSignalAutoCal = _settings.PureSignalAutoCal;
             if (_settings.LpfEdges != null) BandFilters.LpfEdges = _settings.LpfEdges;
             if (_settings.HpfEdges != null) BandFilters.HpfEdges = _settings.HpfEdges;
             if (_settings.Bpf1Edges != null) BandFilters.Bpf1Edges = _settings.Bpf1Edges;
@@ -758,7 +777,7 @@ namespace Thetis.Desktop
         private void RefreshTx()
         {
             _updating = true;
-            MoxButton.IsChecked = _radio.Mox && !_radio.Tuning;
+            MoxButton.IsChecked = _radio.Mox && !_radio.Tuning && !_radio.TwoToneOn;
             TuneButton.IsChecked = _radio.Tuning;
             MoxButton.IsEnabled = TuneButton.IsEnabled = _radio.PowerOn;
             DriveSlider.Value = _settings.DrivePercent;
@@ -768,6 +787,9 @@ namespace Thetis.Desktop
             VoxToggle.IsChecked = _settings.TxProcessing.VoxOn;
             CompToggle.IsChecked = _settings.TxProcessing.CompressorOn;
             EqToggle.IsChecked = _settings.TxProcessing.EqOn;
+            PsToggle.IsChecked = _settings.PureSignalAutoCal;
+            TwoToneToggle.IsChecked = _radio.TwoToneOn;
+            TwoToneToggle.IsEnabled = _radio.PowerOn;
             TxEnableCheck.IsChecked = _settings.TransmitAllowed;
             RegionBox.SelectedIndex = Math.Max(0, Array.FindIndex(_regions, r => r.region == _settings.Region));
             TxLowBox.Value = _settings.TxFilterLow;
@@ -802,6 +824,26 @@ namespace Thetis.Desktop
             return _rateWarning;
         }
 
+        /// <summary>PureSignal's state under the PS-A button (PSForm's info labels, in words).</summary>
+        private void RefreshPureSignalStatus()
+        {
+            var ps = _radio.PureSignalStatus;
+            string text = null;
+            IBrush colour = TxWarning.Foreground;
+            if (_settings.PureSignalAutoCal && _radio.PowerOn && _radio.Model == HPSDRModel.HERMESLITE && _radio.SampleRate != 192000)
+                text = "PureSignal on the Hermes-Lite 2 needs the 192 kHz sample rate";
+            else if (_settings.PureSignalAutoCal || ps.CorrectionsApplied)
+            {
+                string what = ps.Correcting ? "correcting" : ps.CorrectionsApplied ? "correction kept" : _radio.Mox ? "calibrating" : "waits for transmit";
+                text = $"PureSignal {what}" + (ps.CalibrationCount > 0 ? $" - {ps.LevelText} ({ps.FeedbackLevel}), TX att {ps.TxAttenuationDb} dB" : "");
+                colour = new SolidColorBrush(Color.Parse(
+                    ps.CalibrationCount == 0 ? "#9AA4AE" :
+                    ps.FeedbackLevel > 181 ? "#42A5F5" : ps.FeedbackLevel > 128 ? "#66BB6A" : ps.FeedbackLevel > 90 ? "#FFEE58" : "#EF5350"));
+            }
+            PsStatusText.IsVisible = text != null;
+            if (text != null) { PsStatusText.Text = text; PsStatusText.Foreground = colour; }
+        }
+
         private void RefreshTxMeters()
         {
             // WDSP's transmit meters only run while the transmitter does, as in the console
@@ -811,6 +853,7 @@ namespace Thetis.Desktop
                     ? $"VOX {(_radio.VoxActive ? "heard" : "listening")}  mic {Math.Clamp(_radio.VoxPeakDb(), -99.0, 99.0),3:0} / {_settings.TxProcessing.VoxThresholdDb:0} dB"
                     : "";
             TxMeterText.IsVisible = TxMeterText.Text.Length > 0;
+            RefreshPureSignalStatus();
 
             string warn = null;
             if (!_settings.TransmitAllowed) warn = "Transmit is off. Enable it under Transmit settings.";

@@ -270,6 +270,7 @@ namespace Thetis.Radio
 
             if (_vacEnabled) StartVac();
             StartTxSupervisor();
+            StartPureSignal();
             Report($"Connected to {ri.DeviceType} at {ri.IpAddress}");
             return true;
         }
@@ -278,6 +279,7 @@ namespace Thetis.Radio
         {
             if (!_powerOn) return;
             StopTxSupervisor();
+            StopPureSignal();
             lock (_txLock)
             {
                 if (_mox) KeyDown();            // never leave the radio transmitting

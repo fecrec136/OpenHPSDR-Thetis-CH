@@ -6,8 +6,8 @@ Receive-side port of Console.UpdateDDCs() and Console.UpdateAAudioMixerStates():
 decides which DDCs (digital down-converters) in the radio carry receiver 1/2,
 at what sample rate, and which receiver audio streams are mixed to the output.
 
-Only the receive (not MOX), no-PureSignal, no-diversity branches are ported
-for now; the values are copied unchanged from console.cs.
+Receive, transmit and PureSignal-feedback branches are ported; diversity is
+not (off).  The values are copied unchanged from console.cs.
 
 Copyright (C) 2000-2025 Original authors
 Copyright (C) 2020-2026 Richard Samphire MW0LGE
@@ -28,7 +28,12 @@ namespace Thetis.Radio
         public const int RxAdcCtrl2 = 0;
         public const int RxAdcCtrlP1 = 4;
 
-        public static void UpdateDDCs(HPSDRModel model, int rx1_rate, int rx2_rate, bool rx2_enabled)
+        /// <summary>
+        /// console.UpdateDDCs: which DDCs run, at what rates, for receive and for
+        /// transmit ('mox'), with or without PureSignal feedback ('ps').  Diversity
+        /// is not ported (off).
+        /// </summary>
+        public static void UpdateDDCs(HPSDRModel model, int rx1_rate, int rx2_rate, bool rx2_enabled, bool mox = false, bool ps = false)
         {
             int DDCEnable = 0;
             const int DDC0 = 1, DDC1 = 2, DDC2 = 4, DDC3 = 8;
@@ -40,7 +45,9 @@ namespace Thetis.Radio
             int nddc = 0;
             int cntrl1 = 0;
             int cntrl2 = 0;
+            int ps_rate = cmaster.PSrate;
             bool p1 = NetworkIO.CurrentRadioProtocol == RadioProtocol.USB;
+            bool psTx = mox && ps;
 
             switch (model)
             {
@@ -52,33 +59,31 @@ namespace Thetis.Radio
                 case HPSDRModel.ANAN_G2:
                 case HPSDRModel.ANAN_G2_1K:
                 case HPSDRModel.ANVELINAPRO3:
+                case HPSDRModel.REDPITAYA:
                     P1_rxcount = 5;                     // RX5 used for puresignal feedback
                     nddc = 5;
-                    P1_DDCConfig = 1;
-                    DDCEnable = DDC2;
-                    SyncEnable = 0;
-                    if (p1) Rate[0] = rx1_rate;
-                    Rate[2] = rx1_rate;
-                    cntrl1 = RxAdcCtrl1 & 0xff;
-                    cntrl2 = RxAdcCtrl2 & 0x3f;
-                    if (rx2_enabled)
+                    if (!psTx)
                     {
-                        DDCEnable += DDC3;
-                        Rate[3] = rx2_rate;
+                        P1_DDCConfig = 1;
+                        DDCEnable = DDC2;
+                        SyncEnable = 0;
+                        if (p1 || model == HPSDRModel.REDPITAYA) Rate[0] = rx1_rate;
+                        if (model == HPSDRModel.REDPITAYA) Rate[1] = rx1_rate;     // REDPITAYA PAVEL
+                        Rate[2] = rx1_rate;
+                        cntrl1 = RxAdcCtrl1 & 0xff;
+                        cntrl2 = RxAdcCtrl2 & 0x3f;
                     }
-                    break;
-
-                case HPSDRModel.REDPITAYA:
-                    P1_rxcount = 5;
-                    nddc = 5;
-                    P1_DDCConfig = 1;
-                    DDCEnable = DDC2;
-                    SyncEnable = 0;
-                    Rate[0] = rx1_rate;
-                    Rate[1] = rx1_rate;
-                    Rate[2] = rx1_rate;
-                    cntrl1 = RxAdcCtrl1 & 0xff;
-                    cntrl2 = RxAdcCtrl2 & 0x3f;
+                    else
+                    {
+                        P1_DDCConfig = 3;
+                        DDCEnable = DDC0 + DDC2;
+                        SyncEnable = DDC1;
+                        Rate[0] = ps_rate;
+                        Rate[1] = ps_rate;
+                        Rate[2] = rx1_rate;
+                        cntrl1 = (RxAdcCtrl1 & 0xf3) | 0x08;
+                        cntrl2 = RxAdcCtrl2 & 0x3f;
+                    }
                     if (rx2_enabled)
                     {
                         DDCEnable += DDC3;
@@ -93,14 +98,27 @@ namespace Thetis.Radio
                 case HPSDRModel.ANAN100:
                     P1_rxcount = 4;                     // RX4 used for puresignal feedback
                     nddc = 4;
-                    P1_DDCConfig = 4;
-                    DDCEnable = DDC0;
-                    SyncEnable = 0;
-                    Rate[0] = rx1_rate;
-                    if (rx2_enabled)
+                    if (!psTx)
                     {
-                        DDCEnable += DDC1;
-                        Rate[1] = rx2_rate;
+                        P1_DDCConfig = 4;
+                        DDCEnable = DDC0;
+                        SyncEnable = 0;
+                        Rate[0] = rx1_rate;
+                        if (rx2_enabled)
+                        {
+                            DDCEnable += DDC1;
+                            Rate[1] = rx2_rate;
+                        }
+                    }
+                    else                                // transmitting and PS is ON
+                    {
+                        P1_DDCConfig = 6;
+                        DDCEnable = DDC0;
+                        SyncEnable = DDC1;
+                        // MI0BOT: the HL2 keeps its receive rate
+                        Rate[0] = Rate[1] = model == HPSDRModel.HERMESLITE ? rx1_rate : ps_rate;
+                        cntrl1 = 4;
+                        cntrl2 = 0;
                     }
                     break;
 
@@ -108,14 +126,25 @@ namespace Thetis.Radio
                 case HPSDRModel.ANAN100B:
                     P1_rxcount = 2;                     // RX2 used for puresignal feedback
                     nddc = 2;
-                    P1_DDCConfig = 4;
-                    DDCEnable = DDC0;
-                    SyncEnable = 0;
-                    Rate[0] = rx1_rate;
-                    if (rx2_enabled)
+                    if (!psTx)
                     {
-                        DDCEnable += DDC1;
-                        Rate[1] = rx2_rate;
+                        P1_DDCConfig = 4;
+                        DDCEnable = DDC0;
+                        SyncEnable = 0;
+                        Rate[0] = rx1_rate;
+                        if (rx2_enabled)
+                        {
+                            DDCEnable += DDC1;
+                            Rate[1] = rx2_rate;
+                        }
+                    }
+                    else
+                    {
+                        P1_DDCConfig = 5;
+                        DDCEnable = DDC0;
+                        SyncEnable = DDC1;
+                        cntrl1 = 4;
+                        cntrl2 = 0;
                     }
                     break;
 

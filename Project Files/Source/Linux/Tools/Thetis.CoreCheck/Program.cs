@@ -305,6 +305,86 @@ internal static class Program
               $"NR off: carrier demodulated again ({back:F1} dBFS)");
     }
 
+    /// <summary>
+    /// PureSignal against the simulator's PA model: two-tone IMD without and
+    /// with correction, the feedback DDCs, auto-attenuate, save and restore.
+    /// </summary>
+    private static void PureSignal(RadioController radio, string statusFile, double tuneMHz)
+    {
+        Console.WriteLine("== PureSignal");
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = tuneMHz;
+        radio.TransmitAllowed = true;
+        radio.Region = TxRegion.IaruRegion1;
+        // drive into the PA's compression, not into hard saturation (no predistortion can go past that)
+        radio.DrivePercent = int.TryParse(Environment.GetEnvironmentVariable("PS_DRIVE"), out int dp) ? dp : 70;
+        radio.TxAttenuationDb = 31;
+        string corr = Path.Combine(Path.GetTempPath(), "thetis-corecheck-ps.txt");
+        File.Delete(corr);
+
+        Check(radio.SetTwoTone(true, out string why) && radio.TwoToneOn, "two-tone test signal keyed" + (why != null ? ": " + why : ""));
+        Thread.Sleep(3000);
+        var st = SimStatus(statusFile);
+        double imdOff = st.GetProperty("tx_imd3_dbc").GetDouble();
+        Console.WriteLine($"  PureSignal off: PA output IMD3 {imdOff:0.0} dBc, tone {st.GetProperty("tx_tone_hz")} Hz, feedback {st.GetProperty("ps")}");
+        Check(imdOff > -40 && imdOff < -10 && !st.GetProperty("ps").GetBoolean(), $"without correction the PA distorts (IMD3 {imdOff:0.0} dBc), no feedback requested");
+
+        radio.PureSignalAutoCal = true;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        PureSignalStatus ps = radio.PureSignalStatus;
+        while (sw.ElapsedMilliseconds < 30000)
+        {
+            Thread.Sleep(500);
+            ps = radio.PureSignalStatus;
+            if (ps.CorrectionsApplied && ps.FeedbackLevel > 128 && ps.FeedbackLevel <= 181 && ps.CalibrationCount >= 3) break;
+        }
+        st = SimStatus(statusFile);
+        Console.WriteLine($"  after {sw.ElapsedMilliseconds / 1000.0:0.0} s: state {ps.State}, feedback {ps.FeedbackLevel} ({ps.LevelText}), calibrations {ps.CalibrationCount}, " +
+                          $"TX attenuator {ps.TxAttenuationDb} dB (radio {st.GetProperty("tx_att_db")}), DDCs {st.GetProperty("nddc")} at {st.GetProperty("sample_rate")} Hz");
+        int psRate = radio.Model == HPSDRModel.HERMESLITE ? radio.SampleRate : 192000;   // MI0BOT: the HL2 keeps its receive rate
+        Check(st.GetProperty("ps").GetBoolean() && st.GetProperty("sample_rate").GetInt32() == psRate,
+              $"PS-A: the radio sends feedback, at {psRate / 1000} kHz while transmitting");
+        Check(ps.TxAttenuationDb < 31 && st.GetProperty("tx_att_db").GetInt32() == ps.TxAttenuationDb,
+              $"auto-attenuate brought the TX attenuator down from 31 dB to {ps.TxAttenuationDb} dB");
+        Check(ps.CorrectionsApplied && ps.FeedbackLevel > 128 && ps.FeedbackLevel <= 181,
+              $"calibrated and correcting (feedback level {ps.FeedbackLevel}, {ps.CalibrationCount} calibrations)");
+        Thread.Sleep(2500);
+        double imdOn = SimStatus(statusFile).GetProperty("tx_imd3_dbc").GetDouble();
+        Check(imdOn < imdOff - 10, $"PureSignal lowers the IMD3 from {imdOff:0.0} to {imdOn:0.0} dBc");
+
+        // auto-attenuate may be recalibrating (correction raises the PA's peaks, and with them
+        // the feedback level): save at a moment a correction is in place
+        bool saved = false;
+        for (int i = 0; i < 100 && !(saved = radio.PureSignalSave(corr, out why)); i++) Thread.Sleep(100);
+        for (int i = 0; i < 20 && saved && !File.Exists(corr); i++) Thread.Sleep(100);   // WDSP writes it on its own thread
+        Check(saved && File.Exists(corr), "correction saved" + (why != null ? ": " + why : ""));
+        radio.PureSignalReset();
+        Thread.Sleep(3000);
+        ps = radio.PureSignalStatus;
+        Console.WriteLine($"  after reset: state {ps.State}, applied {ps.CorrectionsApplied}, enabled {ps.Enabled}, feedback {ps.FeedbackLevel}");
+        double imdReset = SimStatus(statusFile).GetProperty("tx_imd3_dbc").GetDouble();
+        Check(!radio.PureSignalStatus.CorrectionsApplied && imdReset > imdOn + 10, $"reset: the correction is off again (IMD3 {imdReset:0.0} dBc)");
+        Check(radio.PureSignalRestore(corr, out why), "restore requested" + (why != null ? ": " + why : ""));
+        Thread.Sleep(3000);
+        ps = radio.PureSignalStatus;
+        Console.WriteLine($"  after restore: state {ps.State}, applied {ps.CorrectionsApplied}, enabled {ps.Enabled}");
+        double imdRestored = SimStatus(statusFile).GetProperty("tx_imd3_dbc").GetDouble();
+        Check(radio.PureSignalStatus.CorrectionsApplied && imdRestored < imdOff - 10, $"restored correction applied (IMD3 {imdRestored:0.0} dBc)");
+
+        radio.SetTwoTone(false, out _);
+        Thread.Sleep(1500);
+        st = SimStatus(statusFile);
+        Console.WriteLine($"  unkeyed: radio mox {radio.Mox}, sim mox {st.GetProperty("mox")}, rate {st.GetProperty("sample_rate")}");
+        Check(!radio.Mox && !st.GetProperty("mox").GetBoolean() && st.GetProperty("sample_rate").GetInt32() == radio.SampleRate,
+              $"unkeyed: receiving at {radio.SampleRate / 1000} kHz again");
+        radio.PureSignalReset();
+        Thread.Sleep(500);
+        radio.DrivePercent = 10;
+        radio.Region = TxRegion.None;
+        radio.TransmitAllowed = false;
+        File.Delete(corr);
+    }
+
     private static void Transmit(RadioController radio, string statusFile, double tuneMHz)
     {
         string refused = null;
@@ -582,6 +662,20 @@ internal static class Program
         var target = found.FirstOrDefault(r => r.Nic.IsLoopbackLocal) ?? found[0];
         Check(target.Info.DeviceType == HPSDRHW.Hermes, "board reported as Hermes");
 
+        int psArg = Array.IndexOf(args, "--ps");
+        if (psArg >= 0)
+        {
+            var psModel = args.Length > psArg + 1 ? Enum.Parse<HPSDRModel>(args[psArg + 1]) : HPSDRModel.HERMES;
+            radio.SampleRate = args.Length > psArg + 2 ? int.Parse(args[psArg + 2]) : 48000;
+            radio.Mode = DSPMode.USB;
+            radio.FrequencyMHz = 7.100;
+            if (!radio.Start(target, psModel, out string e1)) { Console.WriteLine("start failed: " + e1); return 1; }
+            Thread.Sleep(2000);
+            PureSignal(radio, statusFile, 7.100);
+            radio.Stop();
+            return _failures == 0 ? 0 : 1;
+        }
+
         int vac = Array.IndexOf(args, "--vac");
         if (vac >= 0)
             return VacCheck(radio, target, args[vac + 1], args.Length > vac + 2 ? int.Parse(args[vac + 2]) : 10);
@@ -684,6 +778,7 @@ internal static class Program
         Setup(radio, statusFile, tuneMHz);
         NoiseReduction(radio, statusFile, tuneMHz);
         TxAudio(radio, statusFile, tuneMHz);
+        PureSignal(radio, statusFile, tuneMHz);
         Transmit(radio, statusFile, tuneMHz);
         bool keyed = radio.Mox;
         radio.Stop();

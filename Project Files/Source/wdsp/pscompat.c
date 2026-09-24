@@ -8,6 +8,13 @@ WDSP 2.10 no longer provides.  WDSP 2.10 rewrote the PureSignal calibration
 its own intervals and samples per interval, so those settings are accepted
 and ignored here.  psccF(), the float form of pscc(), is kept working.
 
+GetPSDisp: 2.10 changed it to return correction curves (11 arguments; here
+renamed GetPSDisp2).  The console's AmpView still calls the 7-argument form,
+and passing it 7 arguments would make WDSP write through four stray
+pointers, so GetPSDisp keeps the old signature: the collected samples (up to
+AmpView's 4096) and zeroed coefficient arrays (2.10 has no such
+coefficients).
+
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
@@ -16,6 +23,8 @@ of the License, or (at your option) any later version.
 */
 
 #include "comm.h"
+
+/* GetPSDisp (the 1.29 signature) is in calcc.c, which owns struct _calcc */
 
 PORT void SetPSIntsAndSpi (int channel, int ints, int spi) { (void)channel; (void)ints; (void)spi; }
 PORT void SetPSMapMode (int channel, int map) { (void)channel; (void)map; }

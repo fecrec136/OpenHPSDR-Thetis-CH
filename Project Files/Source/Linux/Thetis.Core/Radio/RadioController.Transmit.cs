@@ -41,7 +41,7 @@ namespace Thetis.Radio
         Pc,
     }
 
-    public enum TxSource { None, Manual, Tune, RadioPtt, Vox }
+    public enum TxSource { None, Manual, Tune, RadioPtt, Vox, TwoTone }
 
     public sealed unsafe partial class RadioController
     {
@@ -335,6 +335,18 @@ namespace Thetis.Radio
         /// <summary>Send an unmodulated carrier at the tune drive level.</summary>
         public bool SetTune(bool on, out string reason) => SetTx(on, true, TxSource.Tune, out reason);
 
+        /// <summary>
+        /// Two-tone test signal (setup.cs chkTestIMD): the signal PureSignal
+        /// calibrates on, and an intermodulation test.  Tones and level from
+        /// PureSignal.TwoTone*; drive as for MOX.
+        /// </summary>
+        public bool SetTwoTone(bool on, out string reason) => SetTx(on, false, TxSource.TwoTone, out reason);
+
+        /// <summary>True while the two-tone test signal is being sent.</summary>
+        public bool TwoToneOn => _mox && _twoTone;
+
+        private bool _twoTone;
+
         private bool SetTx(bool on, bool tune, TxSource source, out string reason)
         {
             reason = null;
@@ -345,10 +357,11 @@ namespace Thetis.Radio
                     if (_mox) KeyDown();
                     return true;
                 }
+                bool twoTone = source == TxSource.TwoTone;
                 if (_mox)
                 {
-                    if (tune == _tuning) return true;
-                    KeyDown();               // switching between MOX and TUNE
+                    if (tune == _tuning && twoTone == _twoTone) return true;
+                    KeyDown();               // switching between MOX, TUNE and two-tone
                 }
                 reason = WhyTxRefused(tune);
                 if (reason != null)
@@ -364,6 +377,7 @@ namespace Thetis.Radio
         private void KeyUp(bool tune, TxSource source)
         {
             _tuning = tune;
+            _twoTone = source == TxSource.TwoTone;
             _txSource = source;
             double txMHz = TxDdsMHz(tune);
 
@@ -372,6 +386,17 @@ namespace Thetis.Radio
                 WDSP.SetTXAPostGenToneFreq(TxChannel, TuneToneHz);
                 WDSP.SetTXAPostGenMode(TxChannel, 0);
                 WDSP.SetTXAPostGenToneMag(TxChannel, MaxToneMag);
+                WDSP.SetTXAPostGenRun(TxChannel, 1);
+            }
+            else if (_twoTone)
+            {
+                // setup.cs chkTestIMD_CheckedChanged; tones in the mode's sideband (chkInvertTones)
+                double f1 = _ps.TwoToneFreq1, f2 = _ps.TwoToneFreq2;
+                if (TxDspMode == DSPMode.LSB || TxDspMode == DSPMode.DIGL) { f1 = -f1; f2 = -f2; }
+                double mag = 0.49999 * Math.Pow(10.0, Math.Clamp(_ps.TwoToneLevelDb, -60.0, 0.0) / 20.0);
+                WDSP.SetTXAPostGenMode(TxChannel, 1);
+                WDSP.SetTXAPostGenTTFreq(TxChannel, f1, f2);
+                WDSP.SetTXAPostGenTTMag(TxChannel, mag, mag);
                 WDSP.SetTXAPostGenRun(TxChannel, 1);
             }
             ApplyTxDsp();
@@ -385,7 +410,8 @@ namespace Thetis.Radio
             WDSP.SetChannelState(WDSP.id(0, 1), 0, 0);
             WDSP.SetChannelState(WDSP.id(0, 0), 0, 1);
             DdcSetup.UpdateAAudioMixerStates(_model, true, false);
-            DdcSetup.UpdateDDCs(_model, _sampleRate, _sampleRate, false);
+            DdcSetup.UpdateDDCs(_model, _sampleRate, _sampleRate, false, true, _psEnabled);
+            ApplyTxAttenuation();                           // ATT on TX while PureSignal runs
 
             // HdwMOXChanged(true)
             NetworkIO.VFOfreq(0, txMHz, 1);
@@ -399,6 +425,7 @@ namespace Thetis.Radio
             cmaster.LoadRouterControlBit((void*)0, 0, 2, 1);
             cmaster.SetEERRun(0, false);
             NetworkIO.EnableEClassModulation(0);
+            puresignal.SetPSMox(TxChannel, true);           // psform.Mox = true
 
             Thread.Sleep(RfDelayMs);
             ivac.SetIVACmox(0, 1);                          // Audio.MOX
@@ -413,11 +440,12 @@ namespace Thetis.Radio
         private void KeyDown()
         {
             _mox = false;
+            puresignal.SetPSMox(TxChannel, false);          // psform.Mox = false
             WDSP.SetChannelState(TxChannel, 0, 1);           // transmitter off, drain
             Thread.Sleep(MoxDelayMs);
-            if (_tuning) WDSP.SetTXAPostGenRun(TxChannel, 0);
+            if (_tuning || _twoTone) WDSP.SetTXAPostGenRun(TxChannel, 0);
 
-            DdcSetup.UpdateDDCs(_model, _sampleRate, _sampleRate, false);
+            DdcSetup.UpdateDDCs(_model, _sampleRate, _sampleRate, false, false, _psEnabled);
             DdcSetup.UpdateAAudioMixerStates(_model, true, false);
             ivac.SetIVACmox(0, 0);                          // Audio.MOX = false
             ivac.SetIVACmox(1, 0);
@@ -437,6 +465,7 @@ namespace Thetis.Radio
             if (_powerOn) WDSP.SetChannelState(WDSP.id(0, 0), 1, 0);   // receiver back on
 
             _tuning = false;
+            _twoTone = false;
             _txSource = TxSource.None;
             _txTimer.Reset();
             NetworkIO.SWRProtect = 1.0f;

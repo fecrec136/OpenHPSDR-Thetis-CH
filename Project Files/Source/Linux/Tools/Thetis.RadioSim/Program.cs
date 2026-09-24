@@ -24,7 +24,7 @@ the Linux build without hardware.  It
     to change the load SWR, press the radio's PTT input or change the mic
     tone level (-200 = silent) while running.
 
-usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq] [--fixed-rate Hz]
+usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq] [--fixed-rate Hz] [--linear-pa] [--linear-pa]
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -77,6 +77,20 @@ namespace Thetis.RadioSim
         private static readonly float[] _txI = new float[24000], _txQ = new float[24000];   // last 0.5 s of TX I/Q
         private static int _txPos;
         private static long _txSamples;
+        // PureSignal: C&C 0x14 C2 bit 6 turns the feedback on; while transmitting,
+        // DDC2 carries the PA output from the coupler (through the TX step
+        // attenuator, C&C 0x1c C3) and DDC3 the DAC signal
+        private static bool _psBit;
+        private static int _txAtt;
+        private static bool _hl2Frames;                      // the host sends Hermes-Lite 2 attenuator frames
+        private static double _psRead = -1;                  // TX sample position (48 kHz) being fed back
+        // PA model (--pa-nonlinear): Rapp AM-AM compression and AM-PM, so that
+        // PureSignal has something to correct
+        private static double _paSat = 0.55, _paSmooth = 2.0, _paAmPm = 0.35;
+        private static bool _paLinear;
+        // the DAC reference stream peaks at the hardware peak the host expects for a
+        // full-scale TX signal (HardwareSpecific.PSDefaultPeak, Protocol 1)
+        private static double DacRefPeak => _hl2Frames ? 0.233 : 0.4072;     // Hermes-Lite 2: 0.233
 
         // --- simulated PA and coupler (Hermes / 100 W class) ---
         private static double _maxPowerW = 100.0;          // PA saturates here
@@ -114,6 +128,7 @@ namespace Thetis.RadioSim
                     case "--noise": _noise = Math.Pow(10.0, double.Parse(args[++i], CultureInfo.InvariantCulture) / 20.0); break;
                     case "--status-file": statusFile = args[++i]; break;
                     case "--textbook-iq": _qSign = 1.0; break;
+                    case "--linear-pa": _paLinear = true; break;
                     case "--fixed-rate": _fixedRateBits = Array.IndexOf(new[] { 48000, 96000, 192000, 384000 }, int.Parse(args[++i], CultureInfo.InvariantCulture)); break;
                     case "--max-power": _maxPowerW = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--pa-gain": _paGainDb = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
@@ -215,7 +230,20 @@ namespace Thetis.RadioSim
                         _ant = (c4 & 3) + 1;
                     }
                     else if (addr == 10)
-                        _stepAtt = (c4 & 0x20) != 0 ? c4 & 0x1f : 0;
+                    {
+                        if ((c4 & 0x40) != 0)
+                        {
+                            // Hermes-Lite 2: 6-bit value 31 - dB (negative dB is LNA gain), the TX value while transmitting
+                            int db = 31 - (c4 & 0x3f);
+                            if (mox) _txAtt = db; else _stepAtt = db;
+                            _hl2Frames = true;
+                        }
+                        else
+                            _stepAtt = (c4 & 0x20) != 0 ? c4 & 0x1f : 0;
+                        _psBit = (c2 & 0x40) != 0;
+                    }
+                    else if (addr == 14 && !_hl2Frames)             // an HL2 ignores this TX attenuator
+                        _txAtt = c3 & 0x1f;
                     else if (addr == 1)
                         _txFreq = f32;
                     else if (addr >= 2 && addr <= 8)
@@ -278,6 +306,7 @@ namespace Thetis.RadioSim
             long samplesSent = 0;
             bool wasStreaming = false;
             int generation = -1;
+            int pacedRate = 0;
 
             while (true)
             {
@@ -289,17 +318,49 @@ namespace Thetis.RadioSim
                 }
                 if (generation != _startGeneration) { generation = _startGeneration; wasStreaming = false; }
                 int rate, nddc; long[] freqs = new long[8]; IPEndPoint host; double gain;
+                bool psTx; double fbGain, drv;
                 lock (_lock)
                 {
+                    psTx = _mox && _psBit;
+                    fbGain = 0.9 * Math.Pow(10.0, -_txAtt / 20.0);          // coupler sample through the TX attenuator
+                    drv = _drive / 255.0;
                     gain = Math.Pow(10.0, -(_stepAtt + 10 * _alexAtt) / 20.0);   // the attenuators act on everything received
                     rate = 48000 << _rateBits;
                     nddc = _nddc;
                     Array.Copy(_ddcFreq, freqs, 8);
                     host = _host;
                 }
-                if (!wasStreaming) { sw.Restart(); samplesSent = 0; wasStreaming = true; }
+                // restart the pacing on a rate change (PureSignal switches to 192 kHz while
+                // transmitting): samples counted at the old rate would put it far ahead
+                if (!wasStreaming || rate != pacedRate) { sw.Restart(); samplesSent = 0; wasStreaming = true; pacedRate = rate; }
 
                 int spr = 504 / (6 * nddc + 2);
+                // PureSignal feedback for this packet: 2 * spr samples at 'rate' from the 48 kHz TX stream
+                double[] refI = null, refQ = null, fbI = null, fbQ = null;
+                if (psTx && nddc >= 4)
+                {
+                    int n = 2 * spr;
+                    refI = new double[n]; refQ = new double[n]; fbI = new double[n]; fbQ = new double[n];
+                    double step = 48000.0 / rate;
+                    lock (_txI)
+                    {
+                        // follow the host's TX samples about 40 ms behind; resynchronise if the gap drifts
+                        double lag = _txSamples - _psRead;
+                        if (_psRead < 0 || lag < 512 || lag > 4096) _psRead = _txSamples - 1920;
+                        for (int j = 0; j < n; j++, _psRead += step)
+                        {
+                            long p0 = (long)Math.Floor(_psRead);
+                            double fr = _psRead - p0;
+                            int a0 = (int)(((p0 % _txI.Length) + _txI.Length) % _txI.Length), a1 = (a0 + 1) % _txI.Length;
+                            refI[j] = _txI[a0] + fr * (_txI[a1] - _txI[a0]);
+                            refQ[j] = _txQ[a0] + fr * (_txQ[a1] - _txQ[a0]);
+                            var (yi, yq) = Pa(refI[j] * drv, refQ[j] * drv);
+                            fbI[j] = fbGain * yi;
+                            fbQ[j] = fbGain * yq;
+                        }
+                    }
+                }
+                else _psRead = -1;
                 pkt[0] = 0xef; pkt[1] = 0xfe; pkt[2] = 0x01; pkt[3] = 0x06;
                 pkt[4] = (byte)(seq >> 24); pkt[5] = (byte)(seq >> 16); pkt[6] = (byte)(seq >> 8); pkt[7] = (byte)seq;
                 seq++;
@@ -328,6 +389,16 @@ namespace Thetis.RadioSim
                     {
                         for (int d = 0; d < nddc; d++)
                         {
+                            if (refI != null && (d == 2 || d == 3))
+                            {
+                                // DDC2: PA output from the coupler; DDC3: the DAC signal (orientation as received)
+                                int j = frame * spr + s;
+                                double fi = d == 2 ? fbI[j] : DacRefPeak * refI[j], fq = d == 2 ? fbQ[j] : DacRefPeak * refQ[j];
+                                int kk = b + 8 + s * (6 * nddc + 2) + d * 6;
+                                Put24(pkt, kk, fi + 1e-6 * Gauss(rng));
+                                Put24(pkt, kk + 3, _qSign * fq + 1e-6 * Gauss(rng));
+                                continue;
+                            }
                             double i = gain * _noise * Gauss(rng), q = gain * _noise * Gauss(rng);
                             for (int c = 0; c < _carriers.Count; c++)
                             {
@@ -364,6 +435,19 @@ namespace Thetis.RadioSim
                 double ahead = due - sw.Elapsed.TotalMilliseconds;
                 if (ahead > 2.0) Thread.Sleep((int)ahead);
             }
+        }
+
+        /// <summary>The PA's output for input i + jq (full scale 1.0): Rapp AM-AM compression and AM-PM.</summary>
+        private static (double i, double q) Pa(double i, double q)
+        {
+            if (_paLinear) return (i, q);
+            double r = Math.Sqrt(i * i + q * q);
+            if (r < 1e-12) return (0, 0);
+            double p = _paSmooth;
+            double g = 1.0 / Math.Pow(1.0 + Math.Pow(r / _paSat, 2 * p), 1.0 / (2 * p));     // |out| = r * g
+            double ph = _paAmPm * (r / _paSat) * (r / _paSat) / (1.0 + (r / _paSat) * (r / _paSat));
+            double c = Math.Cos(ph), sn = Math.Sin(ph);
+            return (g * (i * c - q * sn), g * (i * sn + q * c));
         }
 
         /// <summary>Watts -> 12-bit coupler ADC reading with the Hermes constants the host uses to convert back.</summary>
@@ -441,7 +525,34 @@ namespace Thetis.RadioSim
                     double pw = GoertzelComplex(ti, tq, f, 48000);
                     if (pw > txBest) { txBest = pw; txTone = f; }
                 }
+                // two-tone intermodulation at the PA output: the two strongest tones f1 < f2 and
+                // the third-order products 2f1-f2, 2f2-f1 (dBc, the worse one)
+                double imd3 = 0;
+                int drvNow; lock (_lock) drvNow = _drive;
+                {
+                    float[] pi2 = new float[ti.Length], pq2 = new float[tq.Length];
+                    for (int n2 = 0; n2 < ti.Length; n2++)
+                    {
+                        var (yi, yq) = Pa(ti[n2] * drvNow / 255.0, tq[n2] * drvNow / 255.0);
+                        pi2[n2] = (float)yi; pq2[n2] = (float)yq;
+                    }
+                    double f1 = 0, p1 = 0, f2 = 0, p2 = 0;
+                    for (int f = -4000; f <= 4000; f += 25)
+                    {
+                        double pw = GoertzelComplex(pi2, pq2, f, 48000);
+                        if (pw > p1) { f2 = f1; p2 = p1; f1 = f; p1 = pw; }
+                        else if (pw > p2 && Math.Abs(f - f1) > 100) { f2 = f; p2 = pw; }
+                    }
+                    if (p2 > p1 * 0.25 && Math.Abs(f2 - f1) >= 200)
+                    {
+                        double lo = Math.Min(f1, f2), hi = Math.Max(f1, f2);
+                        double pimd = Math.Max(GoertzelComplex(pi2, pq2, 2 * lo - hi, 48000), GoertzelComplex(pi2, pq2, 2 * hi - lo, 48000));
+                        imd3 = 10 * Math.Log10((pimd + 1e-30) / Math.Min(p1, p2));
+                    }
+                }
                 bool mox; int drive, hpf, lpf, oc, pa, stepAtt, alexAtt, ant, rxOnly, rxOut; long txf, moxFrames;
+                bool psBit; int txAtt;
+                lock (_lock) { psBit = _psBit; txAtt = _txAtt; }
                 lock (_lock)
                 {
                     mox = _mox; drive = _drive; hpf = _hpfBits; lpf = _lpfBits; oc = _ocBits; pa = _paDisable; txf = _txFreq; moxFrames = _moxFrames;
@@ -487,6 +598,9 @@ namespace Thetis.RadioSim
                     ant,
                     rx_only = rxOnly,
                     rx_out = rxOut,
+                    ps = psBit,
+                    tx_att_db = txAtt,
+                    tx_imd3_dbc = Math.Round(imd3, 1),
                 };
                 string json = JsonSerializer.Serialize(status);
                 if (_streaming) Console.WriteLine("radiosim: " + json);
