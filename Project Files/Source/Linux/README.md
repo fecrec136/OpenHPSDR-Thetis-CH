@@ -322,6 +322,32 @@ setup, Ctrl+Q exit, F1 keyboard and mouse help, and Alt with the underlined
 letter opens a menu. MOX and TUNE have no shortcut, so a stray key press
 cannot key the transmitter.
 
+### PC audio (VAC)
+
+Receive audio goes to the PC through ChannelMaster's VAC: one PortAudio
+stream for the speakers and the PC microphone together. The **AF** slider
+sets its level (VAC takes the receiver audio before the radio's own
+volume, so the slider also sets VAC's receive gain). On Linux Mint choose
+the **PulseAudio** sound system and your speakers and microphone, or
+**ALSA** with the `default` or `pulse` device. Both go through PulseAudio
+or PipeWire, which resample as needed.
+
+Two bugs in the bundled PortAudio's PulseAudio support are fixed
+(`lib/portaudio-19.7.0/src/hostapi/pulseaudio`, marked "Thetis"):
+* **Sample format:** it had no case for the fork's 64-bit float samples and
+  sized frames by the application's format. Streams ran 4× (mono
+  microphone) to 8× (stereo) too slowly, so most of the audio was dropped
+  and speech became noise. It now exchanges 32-bit float with PulseAudio,
+  and PortAudio's converter produces the 64-bit samples.
+* **Duplex buffer sizes:** a full-duplex stream used the input's frame size
+  for the output too, then halved the input for a mono microphone. With a
+  mono microphone and stereo speakers that wrote past the output buffer
+  and ran 2× too fast. Each direction is now sized by its own frame size.
+
+Tested with PulseAudio null devices: stereo speakers with a mono or a
+stereo microphone, through both the PulseAudio and ALSA sound systems
+(`thetis-corecheck ... --vac`).
+
 ### Receive diagnostics
 
 **Help → Receive diagnostics** (radio on) watches the receiver for five

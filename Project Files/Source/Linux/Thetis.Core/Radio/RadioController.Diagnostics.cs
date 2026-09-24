@@ -75,12 +75,15 @@ namespace Thetis.Radio
             Line("Attenuator", $"{AttenuatorDb} dB (range {RxFrontEnd.Range(_model).min} to {RxFrontEnd.Range(_model).max})");
             Line("Noise reduction", $"{_nrType} (active: {NoiseReductionActive})");
             Line("Sample rate set", $"{_sampleRate / 1000} kHz");
+            Line("AGC", $"{_agc}, AGC gain (max gain) {_agcTop:0} dB" + (_agcTop < 40 ? "   <-- low: weak signals stay quiet (the console's default is 90 dB)" : ""));
+            Line("AF volume", $"{_volume * 100:0} %");
 
             // --- what the radio really sends ---
             int ooo0 = NetworkIO.getOOO();
             NetworkIO.getAndResetADC_Overload();
             long s0 = p1 ? NetworkIO.getP1RxSamples() : 0;
             long vacFrames0 = _vacRunning ? VacDiag.Frames(0) : 0;
+            if (_vacRunning) VacDiag.OutPeak(0);
             int xrunOut0 = VacDiag.Xruns(0, true), xrunIn0 = VacDiag.Xruns(0, false);
             var sw = Stopwatch.StartNew();
             float[] pix = new float[SpectrumPixels];
@@ -117,6 +120,7 @@ namespace Thetis.Radio
             double elapsed = sw.Elapsed.TotalSeconds;
             long s1 = p1 ? NetworkIO.getP1RxSamples() : 0;
             long vacFrames1 = _vacRunning ? VacDiag.Frames(0) : 0;
+            double vacPeak = _vacRunning ? VacDiag.OutPeak(0) : 0;
 
             r.AppendLine();
             if (p1)
@@ -141,7 +145,7 @@ namespace Thetis.Radio
             }
             Line("S-meter (as shown)", $"{sMin:0.0} to {sMax:0.0} dBm");
             Line("Receiver input level", $"{adcMin:0.0} to {adcMax:0.0} dBFS" + (adcMax - adcMin < 0.01 ? "   <-- not changing: the receiver may not be running" : ""));
-            Line("AGC gain", $"{agcMin:0.0} to {agcMax:0.0} dB");
+            Line("AGC meter (WDSP)", $"{agcMin:0.0} to {agcMax:0.0} dB");
             if (frames > 0 && atVfo > medians.Average() + 20 && sMax < atVfo - 20)
                 r.AppendLine("  <-- the panadapter shows a signal in the filter but the S-meter does not: display and receiver disagree");
 
@@ -164,6 +168,9 @@ namespace Thetis.Radio
                     Line("  device really runs at", cb.ToString("0", inv) + " frames/s" +
                          (Math.Abs(cb - 48000) > 480 ? "   <-- not 48000: the sound device is stalling or restarting" : "   (ok)"));
                 }
+                double pkDb = vacPeak > 1e-10 ? 20 * Math.Log10(vacPeak) : -200;
+                Line("  audio to the speakers", $"peak {pkDb:0.0} dBFS" +
+                     (pkDb < -60 ? "   <-- (near) silence is being sent" : "   (audio is being sent: if you hear nothing, check the system's output device and volume)"));
                 Line("  PortAudio xruns", $"speakers {VacDiag.Xruns(0, true) - xrunOut0}, microphone {VacDiag.Xruns(0, false) - xrunIn0} (during the test)");
                 for (int type = 0; type < 2; type++)
                 {

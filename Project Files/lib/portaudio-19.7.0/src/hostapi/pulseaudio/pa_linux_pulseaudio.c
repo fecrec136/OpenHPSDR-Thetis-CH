@@ -921,6 +921,9 @@ PaError IsFormatSupported( struct PaUtilHostApiRepresentation *hostApi,
  * sound device this should be fixed but until then it's safe to believe
  * this works
  */
+/* Thetis: the sample formats this host API can exchange with PulseAudio */
+#define PA_PULSEAUDIO_HOST_FORMATS (paFloat32 | paInt32 | paInt24 | paInt16 | paUInt8)
+
 PaError PaPulseAudio_ConvertPortaudioFormatToPaPulseAudio_( PaSampleFormat portaudiosf,
                                                             pa_sample_spec * pulseaudiosf )
 {
@@ -952,6 +955,7 @@ PaError PaPulseAudio_ConvertPortaudioFormatToPaPulseAudio_( PaSampleFormat porta
 
         case paCustomFormat:
         case paNonInterleaved:
+        default:            /* Thetis: e.g. paFloat64; never leave the format unset */
             PA_DEBUG(("PaPulseAudio %s: THIS IS NOT SUPPORTED BY PULSEAUDIO!\n",
                       __FUNCTION__));
             return paSampleFormatNotSupported;
@@ -1105,11 +1109,16 @@ PaError OpenStream( struct PaUtilHostApiRepresentation *hostApi,
             goto openstream_error;
         }
 
+        /* Thetis: exchange a format PulseAudio has (paFloat64, which this fork
+         * adds, is not one of them) and size frames in that host format; the
+         * buffer processor converts to and from the application's format.
+         * Sizing frames by the application's format made PulseAudio streams
+         * run 4 to 8 times too slow with paFloat64. */
         hostInputSampleFormat =
-            PaUtil_SelectClosestAvailableFormat( inputSampleFormat,
+            PaUtil_SelectClosestAvailableFormat( PA_PULSEAUDIO_HOST_FORMATS,
                                                  inputSampleFormat );
 
-        stream->inputFrameSize = Pa_GetSampleSize( inputSampleFormat ) * inputChannelCount;
+        stream->inputFrameSize = Pa_GetSampleSize( hostInputSampleFormat ) * inputChannelCount;
 
         result = PaPulseAudio_ConvertPortaudioFormatToPaPulseAudio_(
             hostInputSampleFormat,
@@ -1216,12 +1225,11 @@ PaError OpenStream( struct PaUtilHostApiRepresentation *hostApi,
 
         /* IMPLEMENT ME - establish which  host formats are available */
         hostOutputSampleFormat =
-            PaUtil_SelectClosestAvailableFormat( outputSampleFormat
-                                                 /* native formats */ ,
+            PaUtil_SelectClosestAvailableFormat( PA_PULSEAUDIO_HOST_FORMATS,
                                                  outputSampleFormat );
 
         stream->outputFrameSize =
-            Pa_GetSampleSize( outputSampleFormat ) * outputChannelCount;
+            Pa_GetSampleSize( hostOutputSampleFormat ) * outputChannelCount;
 
         result = PaPulseAudio_ConvertPortaudioFormatToPaPulseAudio_(
             hostOutputSampleFormat,

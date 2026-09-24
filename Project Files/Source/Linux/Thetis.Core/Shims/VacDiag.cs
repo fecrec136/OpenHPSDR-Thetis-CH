@@ -25,6 +25,10 @@ namespace Thetis
         [DllImport("ChannelMaster.dll", EntryPoint = "getIVACstreamRate", CallingConvention = CallingConvention.Cdecl)]
         public static extern double StreamRate(int id);
 
+        /// <summary>Peak level (1.0 = full scale) of the audio handed to the sound device since the last call.</summary>
+        [DllImport("ChannelMaster.dll", EntryPoint = "getIVACoutPeak", CallingConvention = CallingConvention.Cdecl)]
+        public static extern double OutPeak(int id);
+
         /// <summary>Callbacks where PortAudio reported an under/overflow: output = false the input (microphone), true the output (speakers).</summary>
         [DllImport("ChannelMaster.dll", EntryPoint = "getIVACxruns", CallingConvention = CallingConvention.Cdecl)]
         public static extern int Xruns(int id, bool output);

@@ -436,17 +436,23 @@ internal static class Program
     /// </summary>
     private static int VacCheck(RadioController radio, DiscoveredRadio target, string device, int seconds)
     {
-        var alsa = Thetis.Audio.AudioDevices.HostApis().FirstOrDefault(h => h.Name.Contains("ALSA"));
-        if (alsa == null) { Console.WriteLine("no ALSA host API"); return 1; }
+        // VAC_HOSTAPI selects the sound system (default ALSA); VAC_INPUT a separate microphone device
+        string apiName = Environment.GetEnvironmentVariable("VAC_HOSTAPI") ?? "ALSA";
+        foreach (var h in Thetis.Audio.AudioDevices.HostApis()) Console.WriteLine($"  host API {h.Index}: {h.Name}");
+        var alsa = Thetis.Audio.AudioDevices.HostApis().FirstOrDefault(h => h.Name.Contains(apiName));
+        if (alsa == null) { Console.WriteLine("no host API " + apiName); return 1; }
         var devs = Thetis.Audio.AudioDevices.Devices(alsa.Index);
         foreach (var d in devs) Console.WriteLine($"  device {d.HostApiDeviceIndex}: {d.Name} (in {d.MaxInputChannels}, out {d.MaxOutputChannels})");
         var dev = devs.FirstOrDefault(d => d.Name == device) ?? devs.FirstOrDefault(d => d.Name.Contains(device));
         if (dev == null) { Console.WriteLine("no device " + device); return 1; }
+        string inName = Environment.GetEnvironmentVariable("VAC_INPUT");
+        var inDev = inName == null ? dev : devs.FirstOrDefault(d => d.Name.Contains(inName) && d.MaxInputChannels > 0);
+        if (inDev == null) { Console.WriteLine("no input device " + inName); return 1; }
         Console.WriteLine($"== VAC on '{dev.Name}'");
         radio.SampleRate = 48000;
         radio.Mode = DSPMode.USB;
         radio.FrequencyMHz = 7.100;
-        radio.ConfigureVac(true, alsa.Index, dev.HostApiDeviceIndex, dev.HostApiDeviceIndex);
+        radio.ConfigureVac(true, alsa.Index, dev.HostApiDeviceIndex, inDev.HostApiDeviceIndex);
         if (!radio.Start(target, HPSDRModel.HERMESLITE, out string error)) { Console.WriteLine("start failed: " + error); return 1; }
         Check(radio.VacRunning, "VAC started");
         Thread.Sleep(2000);
@@ -465,6 +471,13 @@ internal static class Program
             Console.WriteLine($"  {(type == 0 ? "receiver -> device" : "device -> transmitter")}: underflows {u}, overflows {o}, ratio {v:0.0000}, ring {nr}/{rs}");
         }
         Console.WriteLine(radio.ReceiveDiagnostics(5));
+        if (Environment.GetEnvironmentVariable("VAC_OFFSIGNAL") == "1")
+        {
+            radio.FrequencyMHz = 7.150;                         // noise only
+            Thread.Sleep(3000);
+            Console.WriteLine(radio.ReceiveDiagnostics(5));
+            radio.FrequencyMHz = 7.100;
+        }
         Check(Math.Abs(rate - 48000) < 480, $"sound device runs at 48 kHz (measured {rate:0})");
         var d1 = VacDiag.Diags(0, 0);
         int dOver = d1.overflows - d0.overflows, dUnder = d1.underflows - d0.underflows;

@@ -309,7 +309,9 @@ static int _PaPulseAudio_ProcessAudio(PaPulseAudio_Stream *stream,
     if( stream->outputStream )
     {
         /* Calculate how many bytes goes to one frame */
-        pulseaudioInputBytes = pulseaudioOutputBytes = (hostFramesPerBuffer * stream->outputFrameSize);
+        /* Thetis: each direction by its own frame size (a mono input with a
+         * stereo output differ); upstream set both from whichever came last */
+        pulseaudioOutputBytes = (hostFramesPerBuffer * stream->outputFrameSize);
 
         if( stream->bufferProcessor.streamCallback )
         {
@@ -322,7 +324,7 @@ static int _PaPulseAudio_ProcessAudio(PaPulseAudio_Stream *stream,
      */
     if( stream->inputStream )
     {
-        pulseaudioInputBytes = pulseaudioOutputBytes = (hostFramesPerBuffer * stream->inputFrameSize);
+        pulseaudioInputBytes = (hostFramesPerBuffer * stream->inputFrameSize);
 
         if( stream->bufferProcessor.streamCallback )
         {
@@ -335,12 +337,9 @@ static int _PaPulseAudio_ProcessAudio(PaPulseAudio_Stream *stream,
      * mono to monomono which is stereo.
      * Then just read half and copy
      */
-    if( isOutputCb &&
-        stream->outputSampleSpec.channels == 2 &&
-        stream->inputSampleSpec.channels == 1)
-    {
-        pulseaudioInputBytes /= 2;
-    }
+    /* (Upstream halved the input here for a mono input with a stereo output,
+     * to make up for the shared size above; with separate sizes it is not
+     * needed, and the buffer processor handles the channel counts.) */
 
     if( !stream->isActive && stream->outputStream)
     {

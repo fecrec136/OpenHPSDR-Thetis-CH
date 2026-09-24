@@ -264,6 +264,7 @@ namespace Thetis.Radio
             cmaster.SetRunPanadapter(0, true);
             lock (_specLock) _spec.initAnalyzer();
             cmaster.CMSetAudioVolume(_volume);
+            ivac.SetIVACrxscale(0, _volume);
             _powerOn = true;
             ConnectedRadio = ri;
 
@@ -528,6 +529,7 @@ namespace Thetis.Radio
             {
                 _volume = Math.Clamp(value, 0.0, 1.0);
                 if (_powerOn) cmaster.CMSetAudioVolume(_volume);
+                if (_dspReady) ivac.SetIVACrxscale(0, _volume);    // PC audio too (VAC takes the receiver audio before the volume)
             }
         }
 

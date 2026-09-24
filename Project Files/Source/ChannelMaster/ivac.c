@@ -200,6 +200,16 @@ static volatile long long ivac_frames[2];
 // (the microphone side), [id][1] output under/overflow (the speaker side).
 static volatile long ivac_xruns[2][2];
 
+// Peak level of the audio handed to the sound device, per VAC, since the last read.
+static volatile double ivac_out_peak[2];
+
+PORT double getIVACoutPeak(int id)
+{
+	double p = ivac_out_peak[id & 1];
+	ivac_out_peak[id & 1] = 0.0;
+	return p;
+}
+
 PORT long getIVACxruns(int id, int output)
 {
 	return ivac_xruns[id & 1][output ? 1 : 0];
@@ -279,6 +289,15 @@ int CallbackIVAC(const void* input,
 	}
 
 	xrmatchOUT(a->rmatchOUT, out_ptr);
+	{
+		double pk = ivac_out_peak[id & 1];
+		for (unsigned long i = 0; i < 2 * frameCount; i++)
+		{
+			double v = out_ptr[i] < 0.0 ? -out_ptr[i] : out_ptr[i];
+			if (v > pk) pk = v;
+		}
+		ivac_out_peak[id & 1] = pk;
+	}
 	// if (id == 0)  WriteAudio (120.0, 48000, a->vac_size, out_ptr, 3); //
 	if (a->iq_type && a->swapIQout)
 	{
