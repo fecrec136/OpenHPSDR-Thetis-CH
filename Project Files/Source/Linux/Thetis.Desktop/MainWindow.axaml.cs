@@ -81,6 +81,7 @@ namespace Thetis.Desktop
 
             Opened += async (_, _) => await StartDspAsync();
             Closing += (_, _) => Shutdown();
+            Opened += (_, _) => { if (_settings.TxPanelVisible) ShowTxPanel(true); };
             // killed or crashed without closing the window: Thetis.Core unkeys the
             // radio; keep the settings too
             AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { _settings.Save(); } catch (Exception) { } };
@@ -261,6 +262,7 @@ namespace Thetis.Desktop
                 if (e.Property != RangeBase.ValueProperty || _updating) return;
                 _radio.MicGainDb = _settings.MicGainDb = Math.Round(MicGainSlider.Value);
                 RefreshTxCaptions();
+                _txPanel?.Refresh();
             };
             PsToggle.IsCheckedChanged += (_, _) =>
             {
@@ -280,19 +282,23 @@ namespace Thetis.Desktop
                 if (_updating) return;
                 _settings.TxProcessing.VoxOn = VoxToggle.IsChecked == true;
                 _radio.ApplyTxProcessing();
+                _txPanel?.Refresh();
             };
             CompToggle.IsCheckedChanged += (_, _) =>
             {
                 if (_updating) return;
                 _settings.TxProcessing.CompressorOn = CompToggle.IsChecked == true;
                 _radio.ApplyTxProcessing();
+                _txPanel?.Refresh();
             };
             EqToggle.IsCheckedChanged += (_, _) =>
             {
                 if (_updating) return;
                 _settings.TxProcessing.EqOn = EqToggle.IsChecked == true;
                 _radio.ApplyTxProcessing();
+                _txPanel?.Refresh();
             };
+            TxPanelToggle.IsCheckedChanged += (_, _) => { if (!_updating) ShowTxPanel(TxPanelToggle.IsChecked == true); };
             MicSourceBox.SelectionChanged += (_, _) =>
             {
                 if (_updating || MicSourceBox.SelectedIndex < 0) return;
@@ -494,6 +500,7 @@ namespace Thetis.Desktop
             _timer.Stop();
             _settings.WindowWidth = Width;
             _settings.WindowHeight = Height;
+            RememberTxPanelLayout();
             SaveSettings();
             _radio.Dispose();
         }
@@ -739,13 +746,14 @@ namespace Thetis.Desktop
             {
                 MeterText.Text = $"{RadioController.SUnits((float)Meter.Dbm),-7} {Meter.Dbm,7:0.0} dBm";
                 SyncText.Text = !_radio.HaveSync ? "no data from radio" : RateWarning();
-                NoiseCaption.Text = !AetherNr.Loaded
-                    ? "Noise reduction unavailable (hover for why)"
+                NoiseCaption.Text = !AetherNr.Loaded && _settings.NoiseReductionType != NrType.NNR
+                    ? "Noise reduction: only NNR available (hover for why)"
                     : _radio.PowerOn && _settings.NoiseReductionType != NrType.Off && !_radio.NoiseReductionActive
                     ? $"Noise reduction ({_settings.NoiseReductionType} cannot run {(_radio.Mode == DSPMode.FM ? "in FM" : "here")})"
                     : "Noise reduction";
                 RefreshTxMeters();
             }
+            if (_meterDivider % 3 == 0) _txPanel?.UpdateMeters();
         }
 
         #endregion
@@ -788,6 +796,7 @@ namespace Thetis.Desktop
             VoxToggle.IsChecked = _settings.TxProcessing.VoxOn;
             CompToggle.IsChecked = _settings.TxProcessing.CompressorOn;
             EqToggle.IsChecked = _settings.TxProcessing.EqOn;
+            TxPanelToggle.IsChecked = _settings.TxPanelVisible;
             PsToggle.IsChecked = _settings.PureSignalAutoCal;
             TwoToneToggle.IsChecked = _radio.TwoToneOn;
             TwoToneToggle.IsEnabled = _radio.PowerOn;

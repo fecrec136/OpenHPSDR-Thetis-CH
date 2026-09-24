@@ -71,6 +71,15 @@ namespace Thetis.Desktop
         public int TxFilterHigh { get; set; } = 3000;
         /// <summary>Leveler, compressor, CESSB, EQ, CFC, phase rotator, VOX and expander.</summary>
         public TxProcessing TxProcessing { get; set; } = new TxProcessing();
+        /// <summary>The transmit audio panel: shown, where, and its size (docked) or window (floating).</summary>
+        public bool TxPanelVisible { get; set; }
+        public Thetis.Desktop.Controls.TxPanelDock TxPanelDock { get; set; } = Thetis.Desktop.Controls.TxPanelDock.Right;
+        public double TxPanelWidth { get; set; } = 330;
+        public double TxPanelHeight { get; set; } = 330;
+        public int? TxPanelX { get; set; }
+        public int? TxPanelY { get; set; }
+        public double TxPanelFloatWidth { get; set; } = 660;
+        public double TxPanelFloatHeight { get; set; } = 560;
         /// <summary>PureSignal settings; PS-A (calibrate continuously) on or off; TX attenuator per band.</summary>
         public PureSignalSettings PureSignal { get; set; } = new PureSignalSettings();
         public bool PureSignalAutoCal { get; set; }

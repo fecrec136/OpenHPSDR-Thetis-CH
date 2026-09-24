@@ -667,6 +667,32 @@ CoreCheck tests this against the transmitted I/Q:
 * VOX: silent microphone stays in receive, speech keys (source VOX), silence
   unkeys after the hold time, and VOX does not key while transmit is disabled
 
+### Transmit audio panel
+
+![Transmit audio panel docked on the right, transmitting](docs/screenshot-tx-panel.png)
+
+The **AUDIO** button next to EQ (or **View → Transmit audio panel**, or
+Ctrl+Shift+A) opens a panel with the controls used while operating:
+
+* mic gain, and the transmit chain's meters: MIC, EQ, leveler and its gain,
+  CFC and its gain, compressor, ALC and its gain reduction (they read while
+  transmitting)
+* the 10-band EQ as vertical sliders, with its preamp, an on/off button and
+  **Flat**; double-click a slider to set it to 0 dB
+* leveler on/off, maximum gain and decay; COMP, CESSB and phase rotator on/off,
+  the compression level and the rotator's corner frequency
+* CFC and its post-EQ on/off, pre-compression and post-EQ gain (the
+  per-band CFC profile stays in Setup)
+* VOX and expander on/off, VOX threshold and hold, expander ratio
+
+It is dockable. The buttons in its title bar put it at the left or right of
+the panadapter, below it, or in a window of its own. Dragging the title bar
+takes a docked panel out into a window. The line between the panel and the
+panadapter resizes it. **View → Transmit audio panel position** chooses the
+place too. The place and sizes are saved. The panel, Setup and the main
+window's VOX / COMP / EQ buttons and mic gain slider change the same settings
+and follow each other.
+
 ## PureSignal
 
 ![Setup window, PureSignal page](docs/screenshot-puresignal.png)

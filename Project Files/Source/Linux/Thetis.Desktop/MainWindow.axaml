@@ -61,6 +61,7 @@
               <ToggleButton x:Name="VoxToggle" Classes="panel" Content="VOX" ToolTip.Tip="Voice-operated transmit (threshold and hold under Setup, Transmit audio)" />
               <ToggleButton x:Name="CompToggle" Classes="panel" Content="COMP" ToolTip.Tip="Speech compressor (level under Setup, Transmit audio)" />
               <ToggleButton x:Name="EqToggle" Classes="panel" Content="EQ" ToolTip.Tip="Transmit equaliser (bands under Setup, Transmit audio)" />
+              <ToggleButton x:Name="TxPanelToggle" Classes="panel" Content="AUDIO" ToolTip.Tip="The transmit audio panel: EQ, leveler, compressor, CFC, VOX, meters (View menu)" />
               <ToggleButton x:Name="PsToggle" Classes="panel" Content="PS-A" ToolTip.Tip="PureSignal: correct the amplifier's distortion, calibrating continuously while transmitting (Setup, PureSignal)" />
               <ToggleButton x:Name="TwoToneToggle" Classes="tx" Content="2-TONE" MinWidth="60" Height="26" FontSize="11" ToolTip.Tip="Transmit the two-tone test signal (for PureSignal calibration and IMD tests)" />
             </WrapPanel>
@@ -144,9 +145,18 @@
       </Grid>
     </Border>
 
-    <!-- panadapter + waterfall -->
-    <Border Classes="group" Padding="0">
-      <c:PanafallView x:Name="Panafall" />
-    </Border>
+    <!-- panadapter + waterfall, with the docking places for the transmit audio panel
+         (MainWindow.TxPanel.cs sets the widths and heights) -->
+    <Grid x:Name="WorkArea" ColumnDefinitions="0,Auto,*,Auto,0" RowDefinitions="*,Auto,0">
+      <ContentControl x:Name="LeftDock" Grid.Column="0" />
+      <GridSplitter x:Name="LeftSplitter" Grid.Column="1" Width="5" IsVisible="False" ResizeDirection="Columns" Background="#2C353E" />
+      <Border Grid.Column="2" Classes="group" Padding="0">
+        <c:PanafallView x:Name="Panafall" />
+      </Border>
+      <GridSplitter x:Name="RightSplitter" Grid.Column="3" Width="5" IsVisible="False" ResizeDirection="Columns" Background="#2C353E" />
+      <ContentControl x:Name="RightDock" Grid.Column="4" />
+      <GridSplitter x:Name="BottomSplitter" Grid.Row="1" Grid.ColumnSpan="5" Height="5" IsVisible="False" ResizeDirection="Rows" Background="#2C353E" />
+      <ContentControl x:Name="BottomDock" Grid.Row="2" Grid.ColumnSpan="5" />
+    </Grid>
   </DockPanel>
 </Window>

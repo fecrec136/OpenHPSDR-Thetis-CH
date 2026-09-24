@@ -361,9 +361,14 @@ namespace Thetis.Desktop
 
         private TxProcessing Tx => _settings.TxProcessing ??= new TxProcessing();
 
+        /// <summary>A transmit audio setting changed here (the main window and its transmit audio panel follow).</summary>
+        public event Action TxChanged;
+
         private void ApplyTx()
         {
-            if (!_building) _radio?.ApplyTxProcessing();
+            if (_building) return;
+            _radio?.ApplyTxProcessing();
+            TxChanged?.Invoke();
         }
 
         private void TxNumber(Grid g, string label, double value, double min, double max, double step, string fmt, Action<double> set)

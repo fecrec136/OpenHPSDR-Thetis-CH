@@ -25,6 +25,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Thetis.Desktop.Controls;
 using Thetis.Radio;
 
 namespace Thetis.Desktop
@@ -53,6 +54,7 @@ namespace Thetis.Desktop
             Bind(Key.F, KeyModifiers.Control, BeginVfoEdit);
             Bind(Key.OemComma, KeyModifiers.Control, () => OpenSetup());
             Bind(Key.F1, KeyModifiers.None, ShowShortcuts);
+            Bind(Key.A, KeyModifiers.Control | KeyModifiers.Shift, () => ShowTxPanel(!_settings.TxPanelVisible));
         }
 
         #region menus
@@ -198,6 +200,14 @@ namespace Thetis.Desktop
             Item("_Reset the spectrum scale", ResetSpectrumView),
             new Separator(),
             Check("_Transmit settings panel", TxSettingsExpander.IsExpanded, () => TxSettingsExpander.IsExpanded = !TxSettingsExpander.IsExpanded),
+            Check("Transmit _audio panel  (Ctrl+Shift+A)", _settings.TxPanelVisible, () => ShowTxPanel(!_settings.TxPanelVisible)),
+            Sub("Transmit audio panel _position", new List<Control>
+            {
+                Radio("_Left", _settings.TxPanelDock == TxPanelDock.Left, () => DockTxPanel(TxPanelDock.Left)),
+                Radio("_Right", _settings.TxPanelDock == TxPanelDock.Right, () => DockTxPanel(TxPanelDock.Right)),
+                Radio("_Bottom", _settings.TxPanelDock == TxPanelDock.Bottom, () => DockTxPanel(TxPanelDock.Bottom)),
+                Radio("_Own window", _settings.TxPanelDock == TxPanelDock.Float, () => DockTxPanel(TxPanelDock.Float)),
+            }),
         };
 
         private List<Control> SetupMenu()
@@ -280,6 +290,7 @@ namespace Thetis.Desktop
                     _setupWindow = null;
                     RefreshTx();                    // VOX / COMP / EQ may have changed there
                 };
+                _setupWindow.TxChanged += () => { RefreshTx(); _txPanel?.Refresh(); };
                 if (tab != null) _setupWindow.ShowTab(tab);
                 _setupWindow.Show(this);
             }
@@ -323,6 +334,7 @@ namespace Thetis.Desktop
             ("Ctrl+S", "save the settings"),
             ("Ctrl+D", "discover radios"),
             ("Ctrl+,", "open setup"),
+            ("Ctrl+Shift+A", "show or hide the transmit audio panel"),
             ("Ctrl+Q", "exit"),
             ("F1", "this list"),
         });

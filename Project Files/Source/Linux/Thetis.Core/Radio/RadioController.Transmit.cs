@@ -651,6 +651,27 @@ namespace Thetis.Radio
         /// <summary>ALC gain reduction in dB.</summary>
         public float AlcGainDb() => _mox ? WDSP.CalculateTXMeter(1, WDSP.MeterType.ALC_G) : 0f;
 
+        /// <summary>
+        /// The transmit audio chain's meters, as the console's TX meter shows them:
+        /// peak levels in dBFS after each stage, and the leveler, CFC and ALC gains in
+        /// dB.  WDSP only runs the chain while transmitting (VOX listens to the
+        /// microphone), so only the microphone is measured while receiving.
+        /// </summary>
+        public TxAudioLevels TxAudioMeters()
+        {
+            if (!_powerOn) return null;
+            float M(WDSP.MeterType t) => WDSP.CalculateTXMeter(1, t);
+            float mic = M(WDSP.MeterType.MIC_PK);
+            if (!_mox) return new TxAudioLevels(mic, null, null, null, null, null, null, null, null);
+            return new TxAudioLevels(mic, M(WDSP.MeterType.EQ_PK), M(WDSP.MeterType.LEVELER_PK), M(WDSP.MeterType.LVL_G),
+                                     M(WDSP.MeterType.CFC_PK), M(WDSP.MeterType.CFC_G), M(WDSP.MeterType.CPDR_PK),
+                                     M(WDSP.MeterType.ALC_PK), M(WDSP.MeterType.ALC_G));
+        }
+
         #endregion
     }
+
+    /// <summary>Transmit audio meters (see RadioController.TxAudioMeters); null = not measured now.</summary>
+    public sealed record TxAudioLevels(float Mic, float? Eq, float? Leveler, float? LevelerGain, float? Cfc, float? CfcGain,
+                                       float? Compressor, float? Alc, float? AlcGain);
 }
