@@ -109,6 +109,10 @@ internal static class Program
 
         Console.WriteLine("== VOX");
         SimControl(statusFile, 1.2, false, -200);   // silent mic
+        // the simulator reads its control file once a second: wait until the tone
+        // has really stopped, or VOX (rightly) keys on its tail
+        WaitSim(statusFile, s => s.GetProperty("mic_dbfs").GetDouble() <= -150, 4000, out _);
+        Thread.Sleep(300);
         tx.VoxOn = true;
         tx.VoxThresholdDb = -40;
         radio.ApplyTxProcessing();

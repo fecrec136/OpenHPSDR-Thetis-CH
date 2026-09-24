@@ -714,7 +714,7 @@ namespace Thetis.Desktop
             if (++_meterDivider % 6 == 0)
             {
                 MeterText.Text = $"{RadioController.SUnits((float)Meter.Dbm),-7} {Meter.Dbm,7:0.0} dBm";
-                SyncText.Text = _radio.HaveSync ? "" : "no data from radio";
+                SyncText.Text = !_radio.HaveSync ? "no data from radio" : RateWarning();
                 NoiseCaption.Text = !AetherNr.Loaded
                     ? "Noise reduction unavailable (hover for why)"
                     : _radio.PowerOn && _settings.NoiseReductionType != NrType.Off && !_radio.NoiseReductionActive
@@ -782,6 +782,20 @@ namespace Thetis.Desktop
             DriveCaption.Text = $"Drive {_settings.DrivePercent} %";
             TunePowerCaption.Text = $"Tune power {_settings.TunePercent} %";
             MicGainCaption.Text = $"Mic gain {_settings.MicGainDb:0} dB";
+        }
+
+        private int _rateDivider;
+        private string _rateWarning = "";
+
+        /// <summary>Every two seconds: does the radio send the sample rate that was set?</summary>
+        private string RateWarning()
+        {
+            if (++_rateDivider % 12 != 0) return _rateWarning;
+            double? rate = _radio.MeasuredSampleRate();
+            _rateWarning = rate is double r && Math.Abs(r - _radio.SampleRate) > 0.1 * _radio.SampleRate
+                ? $"Radio sends {r / 1000:0} kHz, not {_radio.SampleRate / 1000} kHz (Help > Receive diagnostics)"
+                : "";
+            return _rateWarning;
         }
 
         private void RefreshTxMeters()

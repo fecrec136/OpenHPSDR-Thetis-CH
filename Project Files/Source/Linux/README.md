@@ -315,12 +315,30 @@ controls as the panels, so the two always agree.
 | Audio | PC audio, sound system, output device, input device |
 | View | Zoom in / out, full span, reset the spectrum scale, transmit settings panel |
 | Setup | The setup window, or any of its pages directly |
-| Help | Keyboard and mouse, project page, about |
+| Help | Keyboard and mouse, receive diagnostics, project page, about |
 
 Shortcuts: Ctrl+S save, Ctrl+D discover, Ctrl+F enter a frequency, Ctrl+,
 setup, Ctrl+Q exit, F1 keyboard and mouse help, and Alt with the underlined
 letter opens a menu. MOX and TUNE have no shortcut, so a stray key press
 cannot key the transmitter.
+
+### Receive diagnostics
+
+**Help → Receive diagnostics** (radio on) watches the receiver for five
+seconds and reports:
+* the radio, firmware and model setting
+* the frequencies sent to each DDC
+* the sample rate the radio really sends, compared with the setting
+* out-of-order packets and ADC overload
+* the strongest signal on the panadapter and in the filter
+* the S-meter, the receiver's input level and the AGC gain
+* the PC audio buffers (underflows, overflows, rate ratio)
+
+It flags readings that disagree: a rate the radio did not take, a receiver
+that is not running, or a signal in the filter that the S-meter does not
+see. The report is saved to `~/.config/thetis-linux/receive-diagnostics.txt`
+and can be copied from the window. The bottom bar also warns whenever the
+radio's measured rate differs from the setting (Protocol 1).
 
 ### Testing without a radio
 
@@ -339,7 +357,9 @@ I/Q (level and tone) and models a Hermes PA (`--pa-gain`, `--max-power`) and
 directional coupler. It reports forward and reflected power into a load of
 the chosen SWR (`--swr`). While it runs, writing
 `{"swr": 3.0, "ptt": true}` to `<status file>.ctl` changes the load or
-presses the radio's PTT input.
+presses the radio's PTT input. `--fixed-rate 48000` makes it ignore the
+host's sample rate, like a radio that does not take the rate. The receive
+diagnostics and the bottom-bar warning are tested with this option.
 
 `Tools/Thetis.CoreCheck` drives `Thetis.Core` against it. It checks
 discovery, connecting, DDC tuning and retuning, the audio returned to the

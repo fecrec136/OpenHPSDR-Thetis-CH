@@ -24,7 +24,7 @@ the Linux build without hardware.  It
     to change the load SWR, press the radio's PTT input or change the mic
     tone level (-200 = silent) while running.
 
-usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq]
+usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq] [--fixed-rate Hz]
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -54,6 +54,7 @@ namespace Thetis.RadioSim
         private static IPEndPoint _host;
         private static volatile bool _streaming;
         private static int _rateBits;                      // 0..3 -> 48k..384k
+        private static int _fixedRateBits = -1;            // --fixed-rate: ignore the host's rate (a faulty radio)
         private static int _nddc = 1;
         private static readonly long[] _ddcFreq = new long[8];
         private static long _packetsIn, _packetsOut;
@@ -113,6 +114,7 @@ namespace Thetis.RadioSim
                     case "--noise": _noise = Math.Pow(10.0, double.Parse(args[++i], CultureInfo.InvariantCulture) / 20.0); break;
                     case "--status-file": statusFile = args[++i]; break;
                     case "--textbook-iq": _qSign = 1.0; break;
+                    case "--fixed-rate": _fixedRateBits = Array.IndexOf(new[] { 48000, 96000, 192000, 384000 }, int.Parse(args[++i], CultureInfo.InvariantCulture)); break;
                     case "--max-power": _maxPowerW = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--pa-gain": _paGainDb = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--mic-tone":
@@ -129,7 +131,7 @@ namespace Thetis.RadioSim
                         break;
                     case "-h":
                     case "--help":
-                        Console.WriteLine("usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq]");
+                        Console.WriteLine("usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq] [--fixed-rate Hz]");
                         return 0;
                     default:
                         Console.Error.WriteLine("unknown option " + args[i]);
@@ -204,7 +206,7 @@ namespace Thetis.RadioSim
                     long f32 = ((long)c1 << 24) | ((long)c2 << 16) | ((long)c3 << 8) | c4;
                     if (addr == 0)
                     {
-                        _rateBits = c1 & 3;
+                        _rateBits = _fixedRateBits >= 0 ? _fixedRateBits : c1 & 3;
                         _ocBits = (c2 >> 1) & 0x7f;
                         _nddc = ((c4 >> 3) & 7) + 1;
                         _alexAtt = c3 & 3;
@@ -478,6 +480,7 @@ namespace Thetis.RadioSim
                     fwd_w = Math.Round(fwdW, 2),
                     rev_w = Math.Round(fwdW * gamma * gamma, 2),
                     load_swr = _loadSwr,
+                    mic_dbfs = _micAmp > 0 ? Math.Round(20.0 * Math.Log10(_micAmp), 1) : -200.0,
                     radio_ptt = _radioPtt,
                     step_att_db = stepAtt,
                     alex_att_db = 10 * alexAtt,

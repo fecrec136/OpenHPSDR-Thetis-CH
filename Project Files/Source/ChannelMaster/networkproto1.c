@@ -73,6 +73,22 @@ int SendStartToMetis(void) {
 	return 0;
 }
 
+// Receive samples per DDC decoded from Protocol 1 frames since start-up: the
+// host divides the increase by the time to see the rate the radio really sends.
+static volatile long long P1RxSamples = 0;
+
+PORT
+long long getP1RxSamples(void)
+{
+	return P1RxSamples;
+}
+
+PORT
+int getP1nddc(void)
+{
+	return nddc;
+}
+
 PORT
 int SendStopToMetis() {
 	int starting_seq;
@@ -364,6 +380,7 @@ void MetisReadThreadMainLoop(void)
 								break;
 							}
 							spr = 504 / (6 * nddc + 2);											// samples per ddc
+							P1RxSamples += spr;
 							for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
 							{
 								for (isample = 0; isample < spr; isample++)
@@ -530,6 +547,7 @@ void MetisReadThreadMainLoop_HL2(void)
 							}
 
 							spr = 504 / (6 * nddc + 2);											// samples per ddc
+							P1RxSamples += spr;
 							for (iddc = 0; iddc < nddc; iddc++)									// 'nddc' is the number of DDCs running
 							{
 								for (isample = 0; isample < spr; isample++)

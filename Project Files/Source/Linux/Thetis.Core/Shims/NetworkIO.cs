@@ -68,6 +68,15 @@ namespace Thetis
                 else SetVFOfreq(id, Freq2PhaseWord(f_freq), tx);   // sending phaseword to firmware
         }
 
+        /// <summary>The last frequency (MHz) sent for receive DDC 'id' (tx = 0) or the transmitter (tx = 1, id 0).</summary>
+        public static double LastVFOfreq(int id, int tx) => _lastVFOfreq[tx][id];
+
+        [DllImport("ChannelMaster.dll", EntryPoint = "getP1RxSamples", CallingConvention = CallingConvention.Cdecl)]
+        public static extern long getP1RxSamples();
+
+        [DllImport("ChannelMaster.dll", EntryPoint = "getP1nddc", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int getP1nddc();
+
         private static double _freq_correction_factor = 1.0;
         public static double FreqCorrectionFactor
         {

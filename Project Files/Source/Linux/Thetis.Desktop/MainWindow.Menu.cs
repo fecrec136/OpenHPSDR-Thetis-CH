@@ -202,6 +202,7 @@ namespace Thetis.Desktop
         private List<Control> HelpMenu() => new List<Control>
         {
             Item("_Keyboard and mouse", ShowShortcuts, "F1"),
+            Item("_Receive diagnostics...", ShowReceiveDiagnostics, enabled: _radio.PowerOn),
             Item("_Project page", () => _ = Launcher.LaunchUriAsync(new Uri(ProjectUrl))),
             new Separator(),
             Item("_About Thetis for Linux", ShowAbout),
@@ -335,6 +336,45 @@ namespace Thetis.Desktop
                 ("Settings", Settings.ConfigDirectory),
                 ("Data", Settings.DataDirectory),
             });
+        }
+
+        /// <summary>Help / Receive diagnostics: measure for five seconds, then show and save the report.</summary>
+        private async void ShowReceiveDiagnostics()
+        {
+            StatusText.Text = "Receive diagnostics: measuring for 5 seconds...";
+            string report;
+            try { report = await System.Threading.Tasks.Task.Run(() => _radio.ReceiveDiagnostics(5)); }
+            catch (Exception ex) { report = "Diagnostics failed: " + ex; }
+            string file = Path.Combine(Settings.ConfigDirectory, "receive-diagnostics.txt");
+            try { Directory.CreateDirectory(Settings.ConfigDirectory); File.WriteAllText(file, report); }
+            catch (Exception) { file = null; }
+            StatusText.Text = file != null ? "Receive diagnostics saved to " + file : "Receive diagnostics done";
+
+            var box = new TextBox
+            {
+                Text = report, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap,
+                FontFamily = new FontFamily("DejaVu Sans Mono, monospace"), FontSize = 12,
+            };
+            var w = new Window
+            {
+                Title = "Receive diagnostics", Width = 900, Height = 560,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.Parse("#12171C")),
+            };
+            var copy = new Button { Content = "Copy to clipboard", Margin = new Thickness(0, 0, 8, 0) };
+            copy.Click += async (_, _) => { if (w.Clipboard != null) await w.Clipboard.SetTextAsync(report); };
+            var close = new Button { Content = "Close", IsCancel = true };
+            close.Click += (_, _) => w.Close();
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(12) };
+            buttons.Children.Add(new TextBlock { Text = file != null ? "Saved to " + file + "   " : "", VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.Parse("#9AA4AE")) });
+            buttons.Children.Add(copy);
+            buttons.Children.Add(close);
+            var dock = new DockPanel();
+            DockPanel.SetDock(buttons, Dock.Bottom);
+            dock.Children.Add(buttons);
+            dock.Children.Add(new Border { Padding = new Thickness(12, 12, 12, 0), Child = box });
+            w.Content = dock;
+            w.Show(this);
         }
 
         /// <summary>A small modal window with a two-column list; an entry with an empty value is a heading.</summary>
