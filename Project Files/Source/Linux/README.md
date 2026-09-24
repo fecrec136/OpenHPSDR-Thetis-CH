@@ -289,6 +289,31 @@ path.
   or JACK), or to the radio's own audio output
 * Settings saved in `~/.config/thetis-linux/settings.json`
 
+### Menu bar
+
+![The Transmit menu](docs/screenshot-menu.png)
+
+Every option of the main window and the setup pages can be reached from the
+menu bar (`Thetis.Desktop/MainWindow.Menu.cs`). The menus are rebuilt each
+time they open, so their check marks follow the radio. They drive the same
+controls as the panels, so the two always agree.
+
+| Menu | Contents |
+|---|---|
+| File | Save settings, open the settings or data folder, exit |
+| Radio | Power, discover, radio, model, sample rate, receive calibration, antennas |
+| Receive | Enter frequency, band, mode, filter, tuning step, AGC, attenuator, noise reduction (and its settings), ANF |
+| Transmit | MOX, TUNE, VOX, compressor, EQ, leveler, CESSB, CFC, phase rotator, expander, microphone, allow transmitting, region, radio PTT, SWR protection, HL2 N2ADR board, transmit filter and timeout, PA gain |
+| Audio | PC audio, sound system, output device, input device |
+| View | Zoom in / out, full span, reset the spectrum scale, transmit settings panel |
+| Setup | The setup window, or any of its pages directly |
+| Help | Keyboard and mouse, project page, about |
+
+Shortcuts: Ctrl+S save, Ctrl+D discover, Ctrl+F enter a frequency, Ctrl+,
+setup, Ctrl+Q exit, F1 keyboard and mouse help, and Alt with the underlined
+letter opens a menu. MOX and TUNE have no shortcut, so a stray key press
+cannot key the transmitter.
+
 ### Testing without a radio
 
 `Tools/Thetis.RadioSim` emulates a Hermes board over Protocol 1. It answers

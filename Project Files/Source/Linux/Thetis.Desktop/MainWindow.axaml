@@ -9,6 +9,9 @@
 
   <DockPanel>
 
+    <!-- menu bar: every option, built in MainWindow.Menu.cs -->
+    <Menu x:Name="MainMenu" DockPanel.Dock="Top" Background="#161C22" />
+
     <!-- top bar: power, radio selection, status -->
     <Border DockPanel.Dock="Top" Background="#161C22" BorderBrush="#2C353E" BorderThickness="0,0,0,1" Padding="6,4">
       <DockPanel LastChildFill="True">

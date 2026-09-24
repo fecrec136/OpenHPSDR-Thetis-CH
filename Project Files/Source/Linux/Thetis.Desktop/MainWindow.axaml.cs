@@ -106,8 +106,8 @@ namespace Thetis.Desktop
             }
             foreach (var agc in _agcModes)
             {
-                var b = new ToggleButton { Content = agc == AGCMode.FIXD ? "Fixed" : agc.ToString()[0] + agc.ToString().Substring(1).ToLowerInvariant(), Classes = { "panel" } };
-                b.Click += (_, _) => { _radio.Agc = agc; _settings.Agc = agc; RefreshAgc(); };
+                var b = new ToggleButton { Content = AgcLabel(agc), Classes = { "panel" } };
+                b.Click += (_, _) => SetAgc(agc);
                 AgcPanel.Children.Add(b);
                 _agcButtons[agc] = b;
             }
@@ -203,6 +203,7 @@ namespace Thetis.Desktop
             BuildTransmitControls();
 
             SetupButton.Click += (_, _) => OpenSetup();
+            BuildMenu();
             AttSlider.PropertyChanged += (_, e) =>
             {
                 if (e.Property != RangeBase.ValueProperty || _updating) return;
@@ -328,11 +329,7 @@ namespace Thetis.Desktop
             {
                 var b = new ToggleButton { Content = type.ToString(), Classes = { "panel" } };
                 ToolTip.SetTip(b, tip);
-                b.Click += (_, _) =>
-                {
-                    _radio.NoiseReductionType = _settings.NoiseReductionType = type;
-                    RefreshNoiseReduction();
-                };
+                b.Click += (_, _) => SetNoiseReduction(type);
                 NrPanel.Children.Add(b);
                 _nrButtons[type] = b;
             }
@@ -355,15 +352,6 @@ namespace Thetis.Desktop
             _radio.PowerOn ? _radio.Model : ModelBox.SelectedItem is HPSDRModel m ? m : _settings.Model ?? HPSDRModel.HERMES;
 
         private static string AttBandKey(double mhz) => BandPlan.For(mhz)?.Name ?? "GEN";
-
-        private void OpenSetup()
-        {
-            HPSDRModel model = SelectedModel;
-            ApplyModelCalibration(model);
-            var w = new SetupWindow(_radio, _settings, model, SaveSettings);
-            w.Closed += (_, _) => RefreshTx();     // VOX / COMP / EQ may have changed there
-            w.Show(this);
-        }
 
         /// <summary>Per-model calibration from the settings (before power on, and when setup opens).</summary>
         private void ApplyModelCalibration(HPSDRModel model)

@@ -48,7 +48,8 @@ if [ "$app" = 1 ]; then
   echo "Publishing the application..."
   rm -rf "$dist_dir"
   dotnet publish "$here/Thetis.Desktop/Thetis.Desktop.csproj" -c Release \
-    -r linux-x64 --self-contained true -o "$dist_dir"
+    -r linux-x64 --self-contained true -o "$dist_dir" \
+    -p:SourceRevisionId="$(git -C "$here" rev-parse --short HEAD 2>/dev/null || echo local)"
   cp -a "$build_dir"/libwdsp.so "$build_dir"/libWDSP.so "$build_dir"/libChannelMaster.so "$build_dir"/libPA19.so "$dist_dir"/
   # AetherSDR noise reduction, and DFNR's model if it was built in
   cp -a "$build_dir"/libaethernr.so "$dist_dir"/

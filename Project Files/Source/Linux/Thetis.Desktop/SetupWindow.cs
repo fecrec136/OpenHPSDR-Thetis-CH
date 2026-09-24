@@ -53,7 +53,7 @@ namespace Thetis.Desktop
             MinHeight = 420;
             Background = new SolidColorBrush(Color.Parse("#12171C"));
 
-            var tabs = new TabControl { Margin = new Thickness(6) };
+            var tabs = _tabs = new TabControl { Margin = new Thickness(6) };
             tabs.Items.Add(new TabItem { Header = "Receive", Content = Scroll(ReceiveTab()) });
             tabs.Items.Add(new TabItem { Header = "Noise reduction", Content = Scroll(NoiseTab()) });
             _txTab = new TabItem { Header = "Transmit audio", Content = Scroll(TxTab()) };
@@ -63,6 +63,18 @@ namespace Thetis.Desktop
             tabs.Items.Add(new TabItem { Header = "Antennas", Content = Scroll(AntennaTab()) });
             Content = tabs;
             Closed += (_, _) => _save();
+        }
+
+        private readonly TabControl _tabs;
+
+        /// <summary>The tab headers, in order (the main window's Setup menu lists them).</summary>
+        public static readonly string[] TabNames = { "Receive", "Noise reduction", "Transmit audio", "PA gain", "Filters", "Antennas" };
+
+        /// <summary>Bring the tab with this header to the front.</summary>
+        public void ShowTab(string header)
+        {
+            foreach (var item in _tabs.Items)
+                if (item is TabItem t && (string)t.Header == header) { _tabs.SelectedItem = t; return; }
         }
 
         #region helpers
