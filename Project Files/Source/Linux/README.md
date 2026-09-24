@@ -61,7 +61,7 @@ To build it (after `./build.sh --deps`):
 
 `packaging/build-appimage.sh` uses `appimagetool` from `PATH`, or downloads
 it and the AppImage runtime the first time. The native libraries require
-only glibc 2.34. glibc 2.38 would otherwise bind `fscanf` to its new C23
+at most glibc 2.35 and GLIBCXX_3.4.30 (Mint 21); the `abi` test checks this. glibc 2.38 would otherwise bind `fscanf` to its new C23
 variant, so the compat header binds the C99 one; the two differ only in
 `%b` input, which is not used.
 

@@ -24,7 +24,7 @@ for arg in "$@"; do
     --deps)
       sudo apt-get update
       sudo apt-get install -y build-essential cmake pkg-config \
-        libfftw3-dev libasound2-dev libpulse-dev libjack-jackd2-dev \
+        libfftw3-dev zlib1g-dev libasound2-dev libpulse-dev libjack-jackd2-dev git \
         dotnet-sdk-8.0
       ;;
     --native) native=ON ;;
