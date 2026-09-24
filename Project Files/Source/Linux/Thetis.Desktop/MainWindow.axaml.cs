@@ -335,6 +335,7 @@ namespace Thetis.Desktop
             (NrType.RN2, "RN2: RNNoise neural noise reduction (not in FM)"),
             (NrType.NR4, "NR4: libspecbleach spectral noise reduction"),
             (NrType.DFNR, "DFNR: DeepFilterNet3 neural noise reduction (not in FM)"),
+            (NrType.NNR, "NNR: WDSP's neural noise reduction"),
         };
 
         private void BuildNoiseReductionButtons()

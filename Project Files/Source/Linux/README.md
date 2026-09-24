@@ -9,7 +9,7 @@ in stages:
 | 2 | .NET 8 + Avalonia application, receive | **First milestone**: see [Stage 2](#stage-2-the-avalonia-application) |
 | 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
 | 4 | Setup and calibration: attenuator, level calibration, PA gain, filter edges, antennas | **Done**: see [Setup and calibration](#setup-and-calibration) |
-| 5 | WDSP 2.10, and AetherSDR's receive noise reduction: NR2, RN2, NR4, DFNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
+| 5 | WDSP 2.10, and receive noise reduction: AetherSDR's NR2, RN2, NR4, DFNR and WDSP's NNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
 | 6 | Transmit audio processing: VOX, TX equaliser, leveler, compressor, CESSB, CFC, phase rotator | **Done**: see [Transmit audio processing](#transmit-audio-processing) |
 | 6a | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
 | 7 | PureSignal | **Done**: see [PureSignal](#puresignal) |
@@ -575,9 +575,11 @@ covers this area with 17 checks:
 ![Setup window, noise reduction tab](docs/screenshot-nr.png)
 
 The receiver offers the four noise reduction filters of
-[AetherSDR](https://github.com/aethersdr/AetherSDR), chosen with the
-**Off / NR2 / RN2 / NR4 / DFNR** buttons on the main window. Their settings
-are in **Setup → Noise reduction**.
+[AetherSDR](https://github.com/aethersdr/AetherSDR) and WDSP 2.10's own
+neural noise reduction, NNR. You choose one with the
+**Off / NR2 / RN2 / NR4 / DFNR / NNR** buttons on the main window, or from
+**Receive → Noise reduction**. Their settings are in **Setup → Noise reduction**.
+Only one filter runs at a time.
 
 | | What it is | Character |
 |---|---|---|
@@ -585,6 +587,7 @@ are in **Setup → Noise reduction**.
 | **RN2** | RNNoise neural noise reduction, with a dry-mix control that keeps some noise floor | strong on speech, even at negative SNR |
 | **NR4** | libspecbleach spectral noise reduction | gentle: 10 dB by default, and it levels off around 7 dB on steady noise |
 | **DFNR** | DeepFilterNet3 neural noise reduction | the strongest on speech |
+| **NNR** | WDSP 2.10's neural noise reduction (`wdsp/nnr.c`), with two built-in models: standard and large | about 14 dB less noise on steady noise by default; audio up to 8 kHz |
 
 How it fits together:
 
@@ -594,9 +597,19 @@ How it fits together:
   after AGC, on the demodulated audio: the same place as Thetis' NR3/NR4.
   Thetis.Core loads the library and hands its functions to WDSP
   (`SetExtNRFunctions`), so WDSP does not link against it.
+* NNR is part of libwdsp, so it is always available. It runs on the audio
+  resampled to 16 kHz, after AGC by default (Setup can move it before AGC).
+  Its models are compiled into libwdsp; a file `wdsp_nnr_0.bin` or
+  `wdsp_nnr_1.bin` in the working directory replaces a built-in model.
+  Setup has the model, the mask floor (the most it removes, -25 dB by
+  default), the maximum gain, the strength (alpha) and its knee, the
+  noise-tracking time and the gain smoothing. WDSP's defaults are used.
+* Upstream `SetRXANNRRun` did not switch on the band-pass stage after the
+  noise reductions, or its make-up gain, as the other filters do. That is
+  fixed in `nnr.c` and `RXAbp1Set`.
 * RN2 and DFNR need 48 kHz. They do not run in FM, where the receiver runs at
   192 kHz, and the main window says so.
-* All four filters, like the neural ones, treat a steady carrier as noise. A
+* All five filters treat a steady carrier as noise. A
   CW or data signal can be lowered with them on.
 * DFNR's DeepFilterNet3 library (a Rust build) and model are downloaded by
   CMake from AetherSDR's repository at a pinned commit and checked against
@@ -614,6 +627,8 @@ Tests:
   4.4, 0.7, 0.6 and 0.9 dB
 * 8 new CoreCheck checks: each filter running in the WDSP chain against the
   simulator, RN2 not running in FM while NR2 does, and switching off again
+* 6 CoreCheck checks for NNR: about 14 dB less noise with either model, NNR replacing NR2, the mask floor taking effect,
+  NNR running in FM, and switching off again
 
 ## Transmit audio processing
 

@@ -2,10 +2,11 @@
 
 This file is part of a program that implements a Software-Defined Radio.
 
-AetherSDR's receive noise reduction -- NR2, RN2, NR4 and DFNR -- run in the
-WDSP receive chain.  libaethernr holds the filters; WDSP's extnr module
-runs the selected one on the demodulated audio.  This class loads the
-library once and hands its functions to WDSP (SetExtNRFunctions).
+Receive noise reduction in the WDSP receive chain.  AetherSDR's NR2, RN2,
+NR4 and DFNR live in libaethernr; WDSP's extnr module runs the selected one
+on the demodulated audio.  AetherNr loads the library once and hands its
+functions to WDSP (SetExtNRFunctions).  NNR is WDSP 2.10's own neural noise
+reduction (nnr.c); the Nnr class holds its entry points.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -32,6 +33,8 @@ namespace Thetis.Radio
         NR4 = 3,
         /// <summary>DeepFilterNet3 neural noise reduction.</summary>
         DFNR = 4,
+        /// <summary>WDSP 2.10's neural noise reduction (built into WDSP).</summary>
+        NNR = 5,
     }
 
     /// <summary>Filter settings (aethernr.h aethernr_param).</summary>
@@ -42,6 +45,9 @@ namespace Thetis.Radio
         Rn2DryMix = 200,
         Nr4ReductionDb = 300, Nr4SmoothingPct, Nr4WhiteningPct, Nr4Adaptive, Nr4NoiseMethod, Nr4MaskingDepth, Nr4Suppression,
         DfnrAttenLimitDb = 400, DfnrPostFilterBeta,
+        // NNR (WDSP; not sent to libaethernr)
+        NnrModel = 500, NnrMaskFloorDb, NnrMaxGainDb, NnrAlpha, NnrAlphaKneeDb, NnrTau, NnrSmoothAttackMs, NnrSmoothReleaseMs,
+        NnrPosition,
     }
 
     public static class AetherNr
@@ -87,7 +93,7 @@ namespace Thetis.Radio
 
         /// <summary>True if 'type' can run at the DSP rate 'rate' (RN2 and DFNR need 48 kHz; DFNR needs its model).</summary>
         public static bool Available(NrType type, int rate = 48000) =>
-            type == NrType.Off || (Loaded && aethernr_available((int)type, rate) != 0);
+            type == NrType.Off || type == NrType.NNR || (Loaded && aethernr_available((int)type, rate) != 0);
 
         #region native
 
@@ -111,6 +117,64 @@ namespace Thetis.Radio
 
         [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
         internal static extern int GetRXAExtNRActive(int channel);
+
+        #endregion
+    }
+
+    /// <summary>WDSP 2.10's neural noise reduction (nnr.c): always available, it is part of libwdsp.</summary>
+    public static class Nnr
+    {
+        public static bool IsNnrParam(NrParam p) => (int)p >= 500 && (int)p < 600;
+
+        /// <summary>Send one NNR setting to channel 'ch'; the smoothing pair needs both values.</summary>
+        internal static void Apply(int ch, NrParam p, double v, Func<NrParam, double, double> get)
+        {
+            switch (p)
+            {
+                case NrParam.NnrModel: SetRXANNRModel(ch, (int)v); break;
+                case NrParam.NnrMaskFloorDb: SetRXANNRMaskFloor(ch, v); break;
+                case NrParam.NnrMaxGainDb: SetRXANNRMaxGain(ch, v); break;
+                case NrParam.NnrAlpha: SetRXANNRAlpha(ch, v); break;
+                case NrParam.NnrAlphaKneeDb: SetRXANNRAlphaKnee(ch, v); break;
+                case NrParam.NnrTau: SetRXANNRTau(ch, v); break;
+                case NrParam.NnrSmoothAttackMs:
+                case NrParam.NnrSmoothReleaseMs:
+                    SetRXANNRSmooth(ch, get(NrParam.NnrSmoothAttackMs, 0), get(NrParam.NnrSmoothReleaseMs, 0)); break;
+                case NrParam.NnrPosition: SetRXANNRPosition(ch, (int)v); break;
+            }
+        }
+
+        #region native
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRRun(int channel, int run);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRPosition(int channel, int position);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRMaskFloor(int channel, double floorDb);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int SetRXANNRModel(int channel, int slot);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int GetRXANNRModel(int channel);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRAlpha(int channel, double alpha);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRAlphaKnee(int channel, double kneeDb);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRTau(int channel, double tau);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRMaxGain(int channel, double maxGainDb);
+
+        [DllImport("wdsp.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void SetRXANNRSmooth(int channel, double attackMs, double releaseMs);
 
         #endregion
     }

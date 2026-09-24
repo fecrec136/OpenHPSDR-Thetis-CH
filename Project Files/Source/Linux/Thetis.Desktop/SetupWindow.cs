@@ -219,6 +219,10 @@ namespace Thetis.Desktop
             { NrParam.Nr4ReductionDb, 10 }, { NrParam.Nr4SmoothingPct, 0 }, { NrParam.Nr4WhiteningPct, 0 },
             { NrParam.Nr4Adaptive, 1 }, { NrParam.Nr4NoiseMethod, 0 }, { NrParam.Nr4MaskingDepth, 0.5 }, { NrParam.Nr4Suppression, 0.5 },
             { NrParam.DfnrAttenLimitDb, 100 }, { NrParam.DfnrPostFilterBeta, 0.0 },
+            // WDSP 2.10's NNR (RXA.c create_nnr, nnet.c)
+            { NrParam.NnrModel, 0 }, { NrParam.NnrMaskFloorDb, -25 }, { NrParam.NnrMaxGainDb, 12 },
+            { NrParam.NnrAlpha, 1.0 }, { NrParam.NnrAlphaKneeDb, 10 }, { NrParam.NnrTau, 2.0 },
+            { NrParam.NnrSmoothAttackMs, 0 }, { NrParam.NnrSmoothReleaseMs, 0 }, { NrParam.NnrPosition, 1 },
         };
 
         private readonly List<(NrParam p, Control c)> _nrControls = new List<(NrParam, Control)>();
@@ -236,9 +240,10 @@ namespace Thetis.Desktop
         private Control NoiseTab()
         {
             var p = new StackPanel { Spacing = 4 };
-            p.Children.Add(Text("The receive noise reduction filters from AetherSDR (github.com/aethersdr/AetherSDR). Choose one with " +
-                                "the Off / NR2 / RN2 / NR4 / DFNR buttons on the main window; the settings here apply at once. " +
-                                "They run after AGC, on the demodulated audio. RN2 and DFNR need 48 kHz and do not run in FM.", true));
+            p.Children.Add(Text("The receive noise reduction filters: NR2, RN2, NR4 and DFNR from AetherSDR (github.com/aethersdr/AetherSDR), " +
+                                "and NNR, WDSP 2.10's neural noise reduction. Choose one with the Off / NR2 / RN2 / NR4 / DFNR / NNR " +
+                                "buttons on the main window; the settings here apply at once. " +
+                                "They run on the demodulated audio. RN2 and DFNR need 48 kHz and do not run in FM.", true));
             if (!AetherNr.Loaded)
                 p.Children.Add(Text("The noise reduction library (libaethernr.so) is not loaded" +
                                     (AetherNr.Error != null ? ": " + AetherNr.Error : "."), true));
@@ -279,6 +284,20 @@ namespace Thetis.Desktop
             p.Children.Add(Heading("DFNR - DeepFilterNet3"));
             AddNumber(g, "Attenuation limit (dB)", NrParam.DfnrAttenLimitDb, 0, 100, 1, "0");
             AddNumber(g, "Post-filter beta", NrParam.DfnrPostFilterBeta, 0, 0.3, 0.01, "0.00");
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("NNR - WDSP neural noise reduction"));
+            p.Children.Add(Text("Works on the audio resampled to 16 kHz, so it passes audio up to 8 kHz.", true));
+            AddChoice(g, "Model", NrParam.NnrModel, new[] { "Standard", "Large (more CPU)" });
+            AddChoice(g, "Position", NrParam.NnrPosition, new[] { "Before AGC", "After AGC" });
+            AddNumber(g, "Mask floor (dB, the most it removes)", NrParam.NnrMaskFloorDb, -60, 0, 1, "0");
+            AddNumber(g, "Maximum gain (dB)", NrParam.NnrMaxGainDb, 0, 24, 1, "0");
+            AddNumber(g, "Strength (alpha)", NrParam.NnrAlpha, 0, 4, 0.05, "0.00");
+            AddNumber(g, "Strength knee (dB)", NrParam.NnrAlphaKneeDb, 0, 40, 1, "0");
+            AddNumber(g, "Noise tracking time (s)", NrParam.NnrTau, 0.05, 30, 0.05, "0.00");
+            AddNumber(g, "Gain smoothing attack (ms)", NrParam.NnrSmoothAttackMs, 0, 500, 5, "0");
+            AddNumber(g, "Gain smoothing release (ms)", NrParam.NnrSmoothReleaseMs, 0, 500, 5, "0");
             p.Children.Add(g);
 
             var reset = new Button { Content = "Defaults", Margin = new Thickness(0, 8) };
@@ -466,6 +485,20 @@ namespace Thetis.Desktop
             TxNumber(g, "  high (Hz)", t.SideChannelHighHz, 100, 10000, 10, "0", v => t.SideChannelHighHz = v);
             TxCheck(g, "Audio look-ahead", t.LookAheadOn, v => t.LookAheadOn = v);
             TxNumber(g, "  look-ahead (ms)", t.LookAheadMs, 10, 250, 5, "0", v => t.LookAheadMs = (int)v);
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("NNR - WDSP neural noise reduction"));
+            p.Children.Add(Text("Works on the audio resampled to 16 kHz, so it passes audio up to 8 kHz.", true));
+            AddChoice(g, "Model", NrParam.NnrModel, new[] { "Standard", "Large (more CPU)" });
+            AddChoice(g, "Position", NrParam.NnrPosition, new[] { "Before AGC", "After AGC" });
+            AddNumber(g, "Mask floor (dB, the most it removes)", NrParam.NnrMaskFloorDb, -60, 0, 1, "0");
+            AddNumber(g, "Maximum gain (dB)", NrParam.NnrMaxGainDb, 0, 24, 1, "0");
+            AddNumber(g, "Strength (alpha)", NrParam.NnrAlpha, 0, 4, 0.05, "0.00");
+            AddNumber(g, "Strength knee (dB)", NrParam.NnrAlphaKneeDb, 0, 40, 1, "0");
+            AddNumber(g, "Noise tracking time (s)", NrParam.NnrTau, 0.05, 30, 0.05, "0.00");
+            AddNumber(g, "Gain smoothing attack (ms)", NrParam.NnrSmoothAttackMs, 0, 500, 5, "0");
+            AddNumber(g, "Gain smoothing release (ms)", NrParam.NnrSmoothReleaseMs, 0, 500, 5, "0");
             p.Children.Add(g);
 
             var reset = new Button { Content = "Defaults", Margin = new Thickness(0, 8) };

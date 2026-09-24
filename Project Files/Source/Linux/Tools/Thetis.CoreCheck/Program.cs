@@ -256,6 +256,55 @@ internal static class Program
         Check(s1.GetProperty("lpf_bits").GetInt32() == BandFilters.Lpf60_40, "defaults restored");
     }
 
+    /// <summary>WDSP 2.10's NNR in the receive chain, and switching between it and AetherSDR's filters.</summary>
+    private static void NeuralNoiseReduction(RadioController radio, string statusFile, double tuneMHz)
+    {
+        Console.WriteLine("== noise reduction (WDSP NNR)");
+        radio.Mode = DSPMode.USB;
+        radio.Agc = AGCMode.MED;
+        radio.FrequencyMHz = 7.150;                 // noise only
+        radio.NoiseReductionType = NrType.Off;
+        Thread.Sleep(3000);
+        double baseline = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Console.WriteLine($"  noise audio without NR: {baseline:F1} dBFS");
+        if (AetherNr.Loaded)
+        {
+            radio.NoiseReductionType = NrType.NR2;
+            Thread.Sleep(500);
+        }
+        radio.NoiseReductionType = NrType.NNR;
+        Thread.Sleep(4000);
+        double level = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(radio.NoiseReductionActive && baseline - level >= 10.0,
+              $"NNR: running, noise audio {level:F1} dBFS ({baseline - level:F1} dB lower)");
+        if (AetherNr.Loaded)
+            Check(!radio.AetherNrRunning, "NNR replaces NR2 (only one filter runs)");
+
+        radio.SetNoiseReductionParam(NrParam.NnrModel, 1);
+        Thread.Sleep(3500);
+        double large = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(radio.NnrModelInUse == 1 && baseline - large >= 10.0,
+              $"NNR large model: in use, noise audio {large:F1} dBFS ({baseline - large:F1} dB lower)");
+        radio.SetNoiseReductionParam(NrParam.NnrModel, 0);
+        radio.SetNoiseReductionParam(NrParam.NnrMaskFloorDb, -3);
+        Thread.Sleep(3500);
+        double shallow = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(radio.NnrModelInUse == 0 && shallow - level >= 3.0,
+              $"NNR mask floor -3 dB: removes less ({shallow:F1} dBFS, {shallow - level:F1} dB above the -25 dB default)");
+        radio.SetNoiseReductionParam(NrParam.NnrMaskFloorDb, -25);
+
+        radio.Mode = DSPMode.FM;                    // 192 kHz: NNR decimates by 12
+        Thread.Sleep(1500);
+        Check(radio.NoiseReductionActive, "NNR runs in FM");
+        radio.NoiseReductionType = NrType.Off;
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = tuneMHz;
+        Thread.Sleep(2500);
+        double back = SimStatus(statusFile).GetProperty("audio_rms_dbfs").GetDouble();
+        Check(Math.Abs(SimStatus(statusFile).GetProperty("audio_peak_hz").GetDouble() - (tuneMHz == 7.1 ? 1500 : 0)) <= 50 && back > -40,
+              $"NNR off: carrier demodulated again ({back:F1} dBFS)");
+    }
+
     /// <summary>AetherSDR's NR2 / RN2 / NR4 / DFNR in the WDSP receive chain.</summary>
     private static void NoiseReduction(RadioController radio, string statusFile, double tuneMHz)
     {
@@ -344,12 +393,16 @@ internal static class Program
         int psRate = radio.Model == HPSDRModel.HERMESLITE ? radio.SampleRate : 192000;   // MI0BOT: the HL2 keeps its receive rate
         Check(st.GetProperty("ps").GetBoolean() && st.GetProperty("sample_rate").GetInt32() == psRate,
               $"PS-A: the radio sends feedback, at {psRate / 1000} kHz while transmitting");
+        // auto-attenuate may still be stepping: wait for the radio to report the console's setting
+        WaitSim(statusFile, s => s.GetProperty("tx_att_db").GetInt32() == radio.PureSignalStatus.TxAttenuationDb, 10000, out st);
+        ps = radio.PureSignalStatus;
         Check(ps.TxAttenuationDb < 31 && st.GetProperty("tx_att_db").GetInt32() == ps.TxAttenuationDb,
               $"auto-attenuate brought the TX attenuator down from 31 dB to {ps.TxAttenuationDb} dB");
         Check(ps.CorrectionsApplied && ps.FeedbackLevel > 128 && ps.FeedbackLevel <= 181,
               $"calibrated and correcting (feedback level {ps.FeedbackLevel}, {ps.CalibrationCount} calibrations)");
-        Thread.Sleep(2500);
-        double imdOn = SimStatus(statusFile).GetProperty("tx_imd3_dbc").GetDouble();
+        // a new attenuator setting recalibrates: wait for the correction to take (the sim averages 0.5 s)
+        WaitSim(statusFile, s => s.GetProperty("tx_imd3_dbc").GetDouble() < imdOff - 10, 20000, out st);
+        double imdOn = st.GetProperty("tx_imd3_dbc").GetDouble();
         Check(imdOn < imdOff - 10, $"PureSignal lowers the IMD3 from {imdOff:0.0} to {imdOn:0.0} dBc");
 
         // auto-attenuate may be recalibrating (correction raises the PA's peaks, and with them
@@ -359,10 +412,10 @@ internal static class Program
         for (int i = 0; i < 20 && saved && !File.Exists(corr); i++) Thread.Sleep(100);   // WDSP writes it on its own thread
         Check(saved && File.Exists(corr), "correction saved" + (why != null ? ": " + why : ""));
         radio.PureSignalReset();
-        Thread.Sleep(3000);
+        WaitSim(statusFile, s => s.GetProperty("tx_imd3_dbc").GetDouble() > imdOn + 10, 10000, out st);
         ps = radio.PureSignalStatus;
         Console.WriteLine($"  after reset: state {ps.State}, applied {ps.CorrectionsApplied}, enabled {ps.Enabled}, feedback {ps.FeedbackLevel}");
-        double imdReset = SimStatus(statusFile).GetProperty("tx_imd3_dbc").GetDouble();
+        double imdReset = st.GetProperty("tx_imd3_dbc").GetDouble();
         Check(!radio.PureSignalStatus.CorrectionsApplied && imdReset > imdOn + 10, $"reset: the correction is off again (IMD3 {imdReset:0.0} dBc)");
         Check(radio.PureSignalRestore(corr, out why), "restore requested" + (why != null ? ": " + why : ""));
         Thread.Sleep(3000);
@@ -777,6 +830,7 @@ internal static class Program
         File.Delete(statusFile + ".ctl");
         Setup(radio, statusFile, tuneMHz);
         NoiseReduction(radio, statusFile, tuneMHz);
+        NeuralNoiseReduction(radio, statusFile, tuneMHz);
         TxAudio(radio, statusFile, tuneMHz);
         PureSignal(radio, statusFile, tuneMHz);
         Transmit(radio, statusFile, tuneMHz);

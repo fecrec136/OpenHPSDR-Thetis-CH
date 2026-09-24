@@ -981,6 +981,7 @@ void RXAbp1Set (int channel)
         (rxa[channel].rnnr.p->run == 1) ||  // NR3 + NR4 support (nr3)
         (rxa[channel].sbnr.p->run == 1) ||  // NR3 + NR4 support (nr4)
 		(rxa[channel].extnr.p && getRun_extnr (rxa[channel].extnr.p)) ||	// external NR
+		(rxa[channel].nnr.p && getRun_nnr (rxa[channel].nnr.p)) ||	// [Linux] NNR, as RXAbp1Check has it
 		(rxa[channel].anf.p->run  == 1) ||
 		(rxa[channel].anr.p->run  == 1))	a->run = 1;
 	else									a->run = 0;

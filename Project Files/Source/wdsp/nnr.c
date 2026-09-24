@@ -623,13 +623,19 @@ void setSmooth_nnr (NNR a, double att_ms, double rel_ms)
 PORT void
 SetRXANNRRun (int channel, int setit)
 {
-	EnterCriticalSection (&ch[channel].csDSP);
+	// [Linux] set bp1's gain and run as the other noise reductions do
+	// (SetRXAEMNRRun); without it NNR ran with bp1 off at unity gain
 	if (rxa[channel].nnr.p->run != setit)
 	{
+		RXAbp1Check (channel, rxa[channel].amd.p->run, rxa[channel].snba.p->run,
+			rxa[channel].emnr.p->run, setit, rxa[channel].anf.p->run, rxa[channel].anr.p->run,
+			rxa[channel].rnnr.p->run, rxa[channel].sbnr.p->run);
+		EnterCriticalSection (&ch[channel].csDSP);
 		rxa[channel].nnr.p->run = setit;
 		flush_nnr (rxa[channel].nnr.p);
+		RXAbp1Set (channel);
+		LeaveCriticalSection (&ch[channel].csDSP);
 	}
-	LeaveCriticalSection (&ch[channel].csDSP);
 }
 
 PORT void

@@ -546,14 +546,14 @@ namespace Thetis.Radio
         private readonly System.Collections.Generic.Dictionary<NrParam, double> _nrParams =
             new System.Collections.Generic.Dictionary<NrParam, double>();
 
-        /// <summary>Receive noise reduction: AetherSDR's NR2, RN2, NR4 or DFNR (off by default).</summary>
+        /// <summary>Receive noise reduction: AetherSDR's NR2, RN2, NR4 or DFNR, or WDSP's NNR (off by default).</summary>
         public NrType NoiseReductionType
         {
             get => _nrType;
             set
             {
                 _nrType = value;
-                if (_powerOn && AetherNr.Loaded) AetherNr.SetRXAExtNRRun(WDSP.id(0, 0), (int)value);
+                if (_powerOn) RunNoiseReduction(WDSP.id(0, 0));
             }
         }
 
@@ -561,21 +561,43 @@ namespace Thetis.Radio
         public void SetNoiseReductionParam(NrParam param, double value)
         {
             _nrParams[param] = value;
-            if (_powerOn && AetherNr.Loaded) AetherNr.SetRXAExtNRParam(WDSP.id(0, 0), (int)param, value);
+            if (!_powerOn) return;
+            if (Nnr.IsNnrParam(param)) Nnr.Apply(WDSP.id(0, 0), param, value, NrParamOr);
+            else if (AetherNr.Loaded) AetherNr.SetRXAExtNRParam(WDSP.id(0, 0), (int)param, value);
         }
+
+        private double NrParamOr(NrParam p, double dflt) => _nrParams.TryGetValue(p, out double v) ? v : dflt;
 
         /// <summary>
         /// True if the selected filter is actually running.  It is not if the
         /// library or DFNR model is missing, or in FM (192 kHz) for RN2 and DFNR.
         /// </summary>
         public bool NoiseReductionActive =>
-            _nrType != NrType.Off && _powerOn && AetherNr.Loaded && AetherNr.GetRXAExtNRActive(WDSP.id(0, 0)) != 0;
+            _nrType != NrType.Off && _powerOn &&
+            (_nrType == NrType.NNR || (AetherNr.Loaded && AetherNr.GetRXAExtNRActive(WDSP.id(0, 0)) != 0));
+
+        /// <summary>True if one of libaethernr's filters is running (never together with NNR).</summary>
+        public bool AetherNrRunning => _powerOn && AetherNr.Loaded && AetherNr.GetRXAExtNRActive(WDSP.id(0, 0)) != 0;
+
+        /// <summary>WDSP's NNR model slot in use (0 standard, 1 large); -1 when off.</summary>
+        public int NnrModelInUse => _powerOn ? Nnr.GetRXANNRModel(WDSP.id(0, 0)) : -1;
 
         private void ApplyNoiseReduction(int ch)
         {
-            if (!AetherNr.Loaded) return;
-            foreach (var (p, v) in _nrParams) AetherNr.SetRXAExtNRParam(ch, (int)p, v);
-            AetherNr.SetRXAExtNRRun(ch, (int)_nrType);
+            foreach (var (p, v) in _nrParams)
+            {
+                if (Nnr.IsNnrParam(p)) Nnr.Apply(ch, p, v, NrParamOr);
+                else if (AetherNr.Loaded) AetherNr.SetRXAExtNRParam(ch, (int)p, v);
+            }
+            RunNoiseReduction(ch);
+        }
+
+        // one filter at a time: NNR is WDSP's, the others libaethernr's
+        private void RunNoiseReduction(int ch)
+        {
+            bool nnr = _nrType == NrType.NNR;
+            if (AetherNr.Loaded) AetherNr.SetRXAExtNRRun(ch, nnr ? 0 : (int)_nrType);
+            Nnr.SetRXANNRRun(ch, nnr ? 1 : 0);
         }
 
         /// <summary>Automatic notch filter.</summary>
