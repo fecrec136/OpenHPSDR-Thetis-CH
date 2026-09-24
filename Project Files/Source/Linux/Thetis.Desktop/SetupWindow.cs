@@ -4,7 +4,9 @@ This file is part of a program that implements a Software-Defined Radio.
 
 Setup and calibration window: receive level calibration, per-band PA gain,
 filter band edges and antenna selection -- the parts of the Windows Setup
-form that the Linux front end supports so far.  Every change is applied to
+form that the Linux front end supports so far, and the transmit audio
+processing (the Windows DSP / Transmit, CFC and VOX / DE setup pages and
+the EQ form).  Every change is applied to
 the radio at once and saved in the settings.
 
 This program is free software; you can redistribute it and/or
@@ -54,6 +56,8 @@ namespace Thetis.Desktop
             var tabs = new TabControl { Margin = new Thickness(6) };
             tabs.Items.Add(new TabItem { Header = "Receive", Content = Scroll(ReceiveTab()) });
             tabs.Items.Add(new TabItem { Header = "Noise reduction", Content = Scroll(NoiseTab()) });
+            _txTab = new TabItem { Header = "Transmit audio", Content = Scroll(TxTab()) };
+            tabs.Items.Add(_txTab);
             tabs.Items.Add(new TabItem { Header = "PA gain", Content = Scroll(PaTab()) });
             tabs.Items.Add(new TabItem { Header = "Filters", Content = Scroll(FiltersTab()) });
             tabs.Items.Add(new TabItem { Header = "Antennas", Content = Scroll(AntennaTab()) });
@@ -313,6 +317,159 @@ namespace Thetis.Desktop
             c.SelectionChanged += (_, _) => { if (c.SelectedIndex >= 0) SetNr(param, c.SelectedIndex); };
             AddRow(g, label, c);
             _nrControls.Add((param, c));
+        }
+
+        #endregion
+
+        #region transmit audio
+
+        private TabItem _txTab;
+
+        private TxProcessing Tx => _settings.TxProcessing ??= new TxProcessing();
+
+        private void ApplyTx()
+        {
+            if (!_building) _radio?.ApplyTxProcessing();
+        }
+
+        private void TxNumber(Grid g, string label, double value, double min, double max, double step, string fmt, Action<double> set)
+        {
+            var n = Number(value, min, max, step, fmt, 130);
+            n.ValueChanged += (_, _) => { if (n.Value is decimal v) { set((double)v); ApplyTx(); } };
+            AddRow(g, label, n);
+        }
+
+        private void TxCheck(Grid g, string label, bool value, Action<bool> set)
+        {
+            var c = new CheckBox { IsChecked = value };
+            c.IsCheckedChanged += (_, _) => { set(c.IsChecked == true); ApplyTx(); };
+            AddRow(g, label, c);
+        }
+
+        private static Grid Row(int columns) =>
+            new Grid { ColumnDefinitions = new ColumnDefinitions("110," + string.Join(",", System.Linq.Enumerable.Repeat("64", columns))) };
+
+        private Control TxTab()
+        {
+            var t = Tx;
+            var p = new StackPanel { Spacing = 4 };
+            p.Children.Add(Text("Processing of the microphone audio before it is transmitted, in WDSP's order: EQ, leveler, CFC, " +
+                                "compressor, CESSB. VOX, COMP and EQ can also be switched on the main window. Changes apply at once.", true));
+
+            var g = Grid2();
+            p.Children.Add(Heading("Leveler"));
+            TxCheck(g, "On", t.LevelerOn, v => t.LevelerOn = v);
+            TxNumber(g, "Maximum gain (dB)", t.LevelerMaxGainDb, 0, 20, 1, "0", v => t.LevelerMaxGainDb = v);
+            TxNumber(g, "Decay (ms)", t.LevelerDecayMs, 1, 5000, 10, "0", v => t.LevelerDecayMs = (int)v);
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("Compressor"));
+            TxCheck(g, "On (COMP)", t.CompressorOn, v => t.CompressorOn = v);
+            TxNumber(g, "Compression (dB)", t.CompressorDb, 0, 20, 1, "0", v => t.CompressorDb = v);
+            TxCheck(g, "CESSB overshoot control", t.CessbOn, v => t.CessbOn = v);
+            p.Children.Add(g);
+
+            p.Children.Add(Heading("Equaliser"));
+            g = Grid2();
+            TxCheck(g, "On (EQ)", t.EqOn, v => t.EqOn = v);
+            p.Children.Add(g);
+            p.Children.Add(Text("Gain per band, -12 to +15 dB.", true));
+            if (t.EqBandsDb == null || t.EqBandsDb.Length != 10) t.EqBandsDb = new int[10];
+            var eq = Row(11);
+            eq.RowDefinitions = new RowDefinitions("Auto,Auto");
+            Place(eq, Text("Hz"), 0, 0);
+            Place(eq, Text("dB"), 1, 0);
+            Place(eq, Text("Preamp", true), 0, 1);
+            var pre = Number(t.EqPreampDb, -12, 15, 1, "0", 60, false);
+            pre.ValueChanged += (_, _) => { t.EqPreampDb = (int)(pre.Value ?? 0); ApplyTx(); };
+            Place(eq, pre, 1, 1);
+            for (int i = 0; i < 10; i++)
+            {
+                int band = i;
+                int hz = TxProcessing.EqFrequencies[i];
+                Place(eq, Text(hz >= 1000 ? $"{hz / 1000}k" : hz.ToString(), true), 0, i + 2);
+                var n = Number(t.EqBandsDb[i], -12, 15, 1, "0", 60, false);
+                n.ValueChanged += (_, _) => { t.EqBandsDb[band] = (int)(n.Value ?? 0); ApplyTx(); };
+                Place(eq, n, 1, i + 2);
+            }
+            p.Children.Add(eq);
+
+            p.Children.Add(Heading("CFC - continuous frequency compressor"));
+            g = Grid2();
+            TxCheck(g, "On", t.CfcOn, v => t.CfcOn = v);
+            TxNumber(g, "Pre-compression (dB)", t.CfcPrecompDb, 0, 16, 1, "0", v => t.CfcPrecompDb = v);
+            TxCheck(g, "Post-compression EQ", t.CfcPostEqOn, v => t.CfcPostEqOn = v);
+            TxNumber(g, "Post-EQ gain (dB)", t.CfcPostEqGainDb, -16, 16, 1, "0", v => t.CfcPostEqGainDb = v);
+            p.Children.Add(g);
+            t.CfcFrequencies = Resize(t.CfcFrequencies, new double[] { 0, 125, 250, 500, 1000, 2000, 3000, 4000, 5000, 10000 });
+            t.CfcCompressionDb = Resize(t.CfcCompressionDb, new double[] { 5, 5, 5, 5, 5, 5, 5, 5, 5, 5 });
+            t.CfcPostEqDb = Resize(t.CfcPostEqDb, new double[10]);
+            var cfc = Row(10);
+            cfc.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
+            Place(cfc, Text("Hz"), 0, 0);
+            Place(cfc, Text("Compression"), 1, 0);
+            Place(cfc, Text("Post-EQ dB"), 2, 0);
+            for (int i = 0; i < 10; i++)
+            {
+                int k = i;
+                var f = Number(t.CfcFrequencies[i], 0, 20000, 10, "0", 64, false);
+                var c = Number(t.CfcCompressionDb[i], 0, 20, 1, "0", 64, false);
+                var e = Number(t.CfcPostEqDb[i], -20, 20, 1, "0", 64, false);
+                f.ValueChanged += (_, _) => { t.CfcFrequencies[k] = (double)(f.Value ?? 0); ApplyTx(); };
+                c.ValueChanged += (_, _) => { t.CfcCompressionDb[k] = (double)(c.Value ?? 0); ApplyTx(); };
+                e.ValueChanged += (_, _) => { t.CfcPostEqDb[k] = (double)(e.Value ?? 0); ApplyTx(); };
+                Place(cfc, f, 0, i + 1);
+                Place(cfc, c, 1, i + 1);
+                Place(cfc, e, 2, i + 1);
+            }
+            p.Children.Add(cfc);
+
+            g = Grid2();
+            p.Children.Add(Heading("Phase rotator"));
+            TxCheck(g, "On", t.PhaseRotatorOn, v => t.PhaseRotatorOn = v);
+            TxNumber(g, "Corner frequency (Hz)", t.PhaseRotatorHz, 50, 2000, 1, "0", v => t.PhaseRotatorHz = v);
+            TxNumber(g, "Stages", t.PhaseRotatorStages, 1, 16, 1, "0", v => t.PhaseRotatorStages = (int)v);
+            p.Children.Add(g);
+
+            g = Grid2();
+            p.Children.Add(Heading("VOX and downward expander"));
+            p.Children.Add(Text("VOX keys the transmitter when the microphone level passes the threshold, in voice and digital modes, " +
+                                "and releases it after the hold time. The main window shows the level VOX hears. The expander " +
+                                "lowers the background noise between words.", true));
+            TxCheck(g, "VOX on", t.VoxOn, v => t.VoxOn = v);
+            TxNumber(g, "Threshold (dB)", t.VoxThresholdDb, -80, 0, 1, "0", v => t.VoxThresholdDb = v);
+            TxNumber(g, "Hold (ms)", t.VoxHoldMs, 1, 2000, 10, "0", v => t.VoxHoldMs = (int)v);
+            TxCheck(g, "Expander on", t.ExpanderOn, v => t.ExpanderOn = v);
+            TxNumber(g, "Expansion ratio (dB)", t.ExpanderRatioDb, 0, 30, 1, "0", v => t.ExpanderRatioDb = v);
+            TxNumber(g, "Hysteresis (dB)", t.ExpanderHysteresisDb, 0, 10, 0.5, "0.0", v => t.ExpanderHysteresisDb = v);
+            TxNumber(g, "Attack (ms)", t.ExpanderAttackMs, 1, 100, 1, "0", v => t.ExpanderAttackMs = (int)v);
+            TxNumber(g, "Release (ms)", t.ExpanderReleaseMs, 1, 1000, 10, "0", v => t.ExpanderReleaseMs = (int)v);
+            TxNumber(g, "Detector time constant (ms)", t.DetectorTauMs, 1, 100, 1, "0", v => t.DetectorTauMs = (int)v);
+            TxCheck(g, "Side-channel filter", t.SideChannelFilterOn, v => t.SideChannelFilterOn = v);
+            TxNumber(g, "  low (Hz)", t.SideChannelLowHz, 100, 10000, 10, "0", v => t.SideChannelLowHz = v);
+            TxNumber(g, "  high (Hz)", t.SideChannelHighHz, 100, 10000, 10, "0", v => t.SideChannelHighHz = v);
+            TxCheck(g, "Audio look-ahead", t.LookAheadOn, v => t.LookAheadOn = v);
+            TxNumber(g, "  look-ahead (ms)", t.LookAheadMs, 10, 250, 5, "0", v => t.LookAheadMs = (int)v);
+            p.Children.Add(g);
+
+            var reset = new Button { Content = "Defaults", Margin = new Thickness(0, 8) };
+            reset.Click += (_, _) =>
+            {
+                _settings.TxProcessing = new TxProcessing();
+                if (_radio != null) _radio.TxProcessing = _settings.TxProcessing;
+                _txTab.Content = Scroll(TxTab());
+            };
+            p.Children.Add(reset);
+            return p;
+        }
+
+        private static double[] Resize(double[] a, double[] defaults)
+        {
+            if (a != null && a.Length == defaults.Length) return a;
+            var r = (double[])defaults.Clone();
+            if (a != null) Array.Copy(a, r, Math.Min(a.Length, r.Length));
+            return r;
         }
 
         #endregion

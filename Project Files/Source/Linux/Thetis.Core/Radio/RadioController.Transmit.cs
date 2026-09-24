@@ -41,7 +41,7 @@ namespace Thetis.Radio
         Pc,
     }
 
-    public enum TxSource { None, Manual, Tune, RadioPtt }
+    public enum TxSource { None, Manual, Tune, RadioPtt, Vox }
 
     public sealed unsafe partial class RadioController
     {
@@ -167,6 +167,48 @@ namespace Thetis.Radio
             WDSP.SetTXABandpassFreqs(TxChannel, low, high);
             WDSP.SetTXAFMDeviation(TxChannel, FilterPresets.FmDeviation);
             ApplyMicGain();
+            _txProcessing.Apply(TxChannel, 0, _mode);
+        }
+
+        private TxProcessing _txProcessing = new TxProcessing();
+        private volatile bool _voxActive;
+        private bool _voxBlocked;           // a safety stop happened; wait for VOX to drop
+        private bool _voxSubscribed;
+
+        /// <summary>Leveler, compressor, CESSB, EQ, CFC, phase rotator, VOX and expander settings.</summary>
+        public TxProcessing TxProcessing
+        {
+            get => _txProcessing;
+            set { _txProcessing = value ?? new TxProcessing(); ApplyTxProcessing(); }
+        }
+
+        /// <summary>Send the TxProcessing settings again (after changing them in place).</summary>
+        public void ApplyTxProcessing()
+        {
+            if (!_powerOn) return;
+            _txProcessing.Apply(TxChannel, 0, _mode);
+            if (!_txProcessing.VoxOn) _voxActive = false;
+        }
+
+        /// <summary>True while VOX hears speech above its threshold (for display).</summary>
+        public bool VoxActive => _voxActive;
+
+        /// <summary>Peak level at the VOX / expander detector, dB (0 = full scale).</summary>
+        public unsafe double VoxPeakDb()
+        {
+            if (!_powerOn) return -200;
+            double peak = 0;
+            cmaster.GetDEXPPeakSignal(0, &peak);
+            return peak > 1e-10 ? 20.0 * Math.Log10(peak) : -200;
+        }
+
+        private void SubscribeVox()
+        {
+            if (_voxSubscribed) return;
+            _voxSubscribed = true;
+            // ChannelMaster's DEXP calls this on its audio thread (cmaster.PushVox);
+            // the supervisor acts on it, as the console's PTT loop polls Audio.VOXActive
+            cmaster.PushVox += (id, active) => { if (id == 0) _voxActive = active; };
         }
 
         /// <summary>cmaster.CMSetTXAPanelGain1 and the VAC TX gain.</summary>
@@ -411,6 +453,8 @@ namespace Thetis.Radio
 
         private void StartTxSupervisor()
         {
+            SubscribeVox();
+            _voxActive = false;
             _supervisor?.Dispose();
             _lastRadioPtt = false;
             _supervisor = new Timer(_ => SuperviseTx(), null, 50, 50);
@@ -447,16 +491,32 @@ namespace Thetis.Radio
                     }
                 }
 
+                // VOX (console PollPTT: vox_ptt).  After a safety stop VOX may not key
+                // again until it has dropped (console _stop_all_tx), or it would
+                // re-key on the next word.
+                bool vox = _txProcessing.VoxOn && _voxActive && TxProcessing.VoxModes(_mode);
+                if (!vox) _voxBlocked = false;
+                if (vox && !_mox && !_voxBlocked)
+                {
+                    string why = WhyTxRefused(false);
+                    if (why == null) KeyUp(false, TxSource.Vox);
+                    // refused VOX (e.g. transmit not allowed) is silent: it would repeat on every word
+                }
+                else if (!vox && _mox && _txSource == TxSource.Vox)
+                    KeyDown();
+
                 if (!_mox) return;
 
                 if (!HaveSync)
                 {
+                    _voxBlocked = true;
                     KeyDown();
                     TxRefused?.Invoke("Transmit stopped: no data from the radio.");
                     return;
                 }
                 if (TxTimeoutSeconds > 0 && _txTimer.Elapsed.TotalSeconds >= TxTimeoutSeconds)
                 {
+                    _voxBlocked = true;
                     KeyDown();
                     TxRefused?.Invoke($"Transmit stopped by the {TxTimeoutSeconds} s timeout.");
                     return;
@@ -491,6 +551,7 @@ namespace Thetis.Radio
             {
                 Swr = 50.0f;
                 NetworkIO.SWRProtect = 0.01f;
+                _voxBlocked = true;
                 KeyDown();
                 TxRefused?.Invoke("Transmit stopped: open antenna (almost all power reflected). Check the antenna connection.");
                 return;

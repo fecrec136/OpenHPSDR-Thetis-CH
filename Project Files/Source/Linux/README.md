@@ -10,7 +10,7 @@ in stages:
 | 3 | Transmit: MOX, TUNE, drive, microphone, band filters, transmit safety | **First milestone**: see [Transmit](#transmit) |
 | 4 | Setup and calibration: attenuator, level calibration, PA gain, filter edges, antennas | **Done**: see [Setup and calibration](#setup-and-calibration) |
 | 5 | WDSP 2.10, and AetherSDR's receive noise reduction: NR2, RN2, NR4, DFNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
-| 6 | Transmit audio processing: VOX, TX equaliser, compressor, CFC | In progress |
+| 6 | Transmit audio processing: VOX, TX equaliser, leveler, compressor, CESSB, CFC, phase rotator | **Done**: see [Transmit audio processing](#transmit-audio-processing) |
 | 6a | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
 | 7 | PureSignal | Planned |
 | 8 | RX2, sub-receiver, band stacking, more meters | Planned |
@@ -192,7 +192,10 @@ common base:
   design, WBFM, the phase rotator, and others.
 * EQ and CFC use 2.10's code. WDSP 2.00 and 2.10 adopted Thetis' Q-based
   `SetTXAEQProfile`, `SetRXAEQProfile` and `SetTXACFCOMPprofile` signatures,
-  so the C# console calls them unchanged.
+  so the C# console calls them unchanged. 2.10 designs the parametric EQ
+  with a NURBS spline through the band points and accepts Q but no longer
+  uses it: in the Windows console, the parametric EQ's Q settings have no
+  effect with this WDSP. The 10-band graphic EQ is unaffected.
 * Thetis' NR3 (`rnnr`) and NR4 (`sbnr`) stay in the receive chain next to
   NNR and the new `extnr` module.
 * Thetis' CBL before/after-AGC position is kept.
@@ -310,10 +313,11 @@ discovery, connecting, DDC tuning and retuning, the audio returned to the
 radio (48 kHz, the tone at the expected pitch, and following a retune),
 sideband rejection (about 59 dB), the S-meter, the position and height of the
 spectrum peak, 48 to 192 kHz rate changes, and a clean power-off. The
-transmit checks are listed under [Transmit](#transmit), and the setup checks
-under [Setup and calibration](#setup-and-calibration), and the noise
-reduction checks under [Noise reduction](#noise-reduction). All 82 checks
-pass:
+transmit checks are listed under [Transmit](#transmit), the setup checks
+under [Setup and calibration](#setup-and-calibration), the noise reduction
+checks under [Noise reduction](#noise-reduction), and the transmit audio
+checks under [Transmit audio processing](#transmit-audio-processing). All 90
+checks pass:
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -517,6 +521,43 @@ Tests:
   4.4, 0.7, 0.6 and 0.9 dB
 * 8 new CoreCheck checks: each filter running in the WDSP chain against the
   simulator, RN2 not running in FM while NR2 does, and switching off again
+
+## Transmit audio processing
+
+![Setup window, transmit audio tab](docs/screenshot-tx-audio.png)
+
+The microphone audio passes through WDSP's transmit chain as in the Windows
+console. The settings are in **Setup → Transmit audio**; **VOX**, **COMP**
+and **EQ** can also be switched on the main window, below MOX and TUNE.
+Defaults are the Windows console's, and the settings are sent with the same
+WDSP and ChannelMaster calls (`Thetis.Core/Radio/TxProcessing.cs`).
+
+| | What it does | Default |
+|---|---|---|
+| Equaliser | 10-band graphic EQ, 32 Hz to 16 kHz, plus preamp, -12 to +15 dB (`SetTXAGrphEQ10`) | off |
+| Leveler | slow automatic gain | on, 15 dB maximum, 100 ms decay |
+| CFC | continuous frequency compressor: compression per frequency, pre-compression, and an optional post-compression EQ | off |
+| Compressor | the speech compressor, 0 to 20 dB | off, 1 dB |
+| CESSB | controlled-envelope SSB overshoot control | off |
+| Phase rotator | all-pass stages that make the speech waveform more symmetrical | off, 338 Hz, 8 stages |
+| VOX | ChannelMaster's downward expander detector keys the transmitter above the threshold and releases it after the hold time, in voice and digital modes | off, -20 dB, 500 ms hold |
+| Expander | lowers the background noise between words | off |
+
+VOX goes through the same checks as MOX: it does not key while transmitting
+is disabled, outside the bands of your region, or while the radio sends no
+data. After a safety stop (timeout, no data, open antenna) VOX does not key
+again until you stop speaking. While VOX is on, the main window shows the
+level it hears against the threshold.
+
+The simulator takes a microphone level (`"mic_dbfs"` in its `.ctl` file), so
+CoreCheck tests this against the transmitted I/Q:
+
+* the EQ with -12 dB at 1 kHz lowers a 1 kHz tone by 12 dB
+* the compressor at 10 dB raises a quiet tone by 10 dB
+* CFC with 10 dB pre-compression raises the level, and the tone stays at 1 kHz
+* the phase rotator keeps the tone and its level
+* VOX: silent microphone stays in receive, speech keys (source VOX), silence
+  unkeys after the hold time, and VOX does not key while transmit is disabled
 
 ## Not yet ported
 

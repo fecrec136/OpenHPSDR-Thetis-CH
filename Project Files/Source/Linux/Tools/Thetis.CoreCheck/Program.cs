@@ -46,8 +46,93 @@ internal static class Program
         throw new IOException("no radiosim status in " + file);
     }
 
-    private static void SimControl(string statusFile, double swr, bool ptt) =>
-        File.WriteAllText(statusFile + ".ctl", FormattableString.Invariant($"{{\"swr\":{swr},\"ptt\":{(ptt ? "true" : "false")}}}"));
+    private static void SimControl(string statusFile, double swr, bool ptt, double micDbfs = -20) =>
+        File.WriteAllText(statusFile + ".ctl", FormattableString.Invariant(
+            $"{{\"swr\":{swr},\"ptt\":{(ptt ? "true" : "false")},\"mic_dbfs\":{micDbfs}}}"));
+
+    private static double TxLevel(string statusFile)
+    {
+        Thread.Sleep(2200);                         // the simulator reports once a second over 0.5 s
+        return SimStatus(statusFile).GetProperty("tx_iq_dbfs").GetDouble();
+    }
+
+    /// <summary>Transmit audio processing: EQ, compressor, CFC, phase rotator, VOX.</summary>
+    private static void TxAudio(RadioController radio, string statusFile, double tuneMHz)
+    {
+        Console.WriteLine("== transmit audio processing");
+        radio.Mode = DSPMode.USB;
+        radio.FrequencyMHz = tuneMHz;
+        radio.TransmitAllowed = true;
+        radio.Region = TxRegion.IaruRegion1;
+        radio.MicSource = MicSource.Radio;
+        radio.MicGainDb = 0;
+        radio.DrivePercent = 10;
+        SimControl(statusFile, 1.2, false, -30);    // quiet mic: stays below the ALC
+        var tx = new TxProcessing { LevelerOn = false };
+        radio.TxProcessing = tx;
+        radio.SetMox(true, out _);
+        double flat = TxLevel(statusFile);
+        Console.WriteLine($"  1 kHz mic tone at -30 dBFS, no processing: TX I/Q {flat:F1} dBFS");
+
+        tx.EqOn = true;
+        tx.EqBandsDb[5] = -12;                      // the 1 kHz band
+        radio.ApplyTxProcessing();
+        double eq = TxLevel(statusFile);
+        Check(flat - eq > 8 && flat - eq < 16, $"EQ: -12 dB at 1 kHz lowers the TX tone {flat - eq:F1} dB");
+        tx.EqOn = false;
+        tx.EqBandsDb[5] = 0;
+
+        tx.CompressorOn = true;
+        tx.CompressorDb = 10;
+        radio.ApplyTxProcessing();
+        double comp = TxLevel(statusFile);
+        Check(comp - flat > 5, $"compressor at 10 dB raises the TX level {comp - flat:F1} dB");
+        tx.CompressorOn = false;
+
+        tx.CfcOn = true;
+        tx.CfcPrecompDb = 10;
+        radio.ApplyTxProcessing();
+        double cfc = TxLevel(statusFile);
+        var st = SimStatus(statusFile);
+        Check(cfc - flat > 3 && Math.Abs(st.GetProperty("tx_tone_hz").GetDouble() - 1000) <= 25,
+              $"CFC with 10 dB pre-compression raises the level {cfc - flat:F1} dB, tone still at 1 kHz");
+        tx.CfcOn = false;
+
+        tx.PhaseRotatorOn = true;
+        radio.ApplyTxProcessing();
+        double phrot = TxLevel(statusFile);
+        st = SimStatus(statusFile);
+        Check(Math.Abs(phrot - flat) < 3 && Math.Abs(st.GetProperty("tx_tone_hz").GetDouble() - 1000) <= 25,
+              $"phase rotator: tone and level kept ({Math.Round(phrot - flat, 1) + 0.0:+0.0;-0.0;0.0} dB)");
+        tx.PhaseRotatorOn = false;
+        radio.SetMox(false, out _);
+
+        Console.WriteLine("== VOX");
+        SimControl(statusFile, 1.2, false, -200);   // silent mic
+        tx.VoxOn = true;
+        tx.VoxThresholdDb = -40;
+        radio.ApplyTxProcessing();
+        Thread.Sleep(1500);
+        // the simulator's status lags up to a second behind the previous section's unkey
+        Check(!radio.Mox && WaitSim(statusFile, s => !s.GetProperty("mox").GetBoolean(), 3000, out _) && !radio.Mox,
+              "VOX on, silent mic: receiving");
+        SimControl(statusFile, 1.2, false, -20);    // speak
+        Check(WaitSim(statusFile, s => s.GetProperty("mox").GetBoolean(), 4000, out _) && radio.Mox && radio.TxSource == TxSource.Vox,
+              "the mic tone keys the radio through VOX");
+        SimControl(statusFile, 1.2, false, -200);   // stop speaking: unkeys after the 500 ms hold
+        Check(WaitSim(statusFile, s => !s.GetProperty("mox").GetBoolean(), 4000, out _) && !radio.Mox, "silence unkeys it after the hold time");
+        radio.TransmitAllowed = false;
+        SimControl(statusFile, 1.2, false, -20);
+        Thread.Sleep(2500);
+        Check(!radio.Mox, "VOX does not key while transmit is disabled");
+        tx.VoxOn = false;
+        radio.ApplyTxProcessing();
+        radio.TxProcessing = new TxProcessing();
+        radio.Region = TxRegion.None;
+        radio.MicGainDb = 10;
+        File.Delete(statusFile + ".ctl");
+        Thread.Sleep(1200);
+    }
 
     /// <summary>Poll the simulator status until 'pred' holds (true) or 'ms' elapse (false).</summary>
     private static bool WaitSim(string file, Func<JsonElement, bool> pred, int ms, out JsonElement st)
@@ -464,6 +549,7 @@ internal static class Program
         File.Delete(statusFile + ".ctl");
         Setup(radio, statusFile, tuneMHz);
         NoiseReduction(radio, statusFile, tuneMHz);
+        TxAudio(radio, statusFile, tuneMHz);
         Transmit(radio, statusFile, tuneMHz);
         bool keyed = radio.Mox;
         radio.Stop();

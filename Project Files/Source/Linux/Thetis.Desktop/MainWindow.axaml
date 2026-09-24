@@ -54,6 +54,11 @@
               <ToggleButton x:Name="MoxButton" Classes="tx" Content="MOX" ToolTip.Tip="Transmit (the radio's PTT input also keys it)" />
               <ToggleButton x:Name="TuneButton" Classes="tx" Content="TUNE" ToolTip.Tip="Send a steady carrier at the tune power" />
             </StackPanel>
+            <WrapPanel HorizontalAlignment="Center" Margin="0,4,0,0">
+              <ToggleButton x:Name="VoxToggle" Classes="panel" Content="VOX" ToolTip.Tip="Voice-operated transmit (threshold and hold under Setup, Transmit audio)" />
+              <ToggleButton x:Name="CompToggle" Classes="panel" Content="COMP" ToolTip.Tip="Speech compressor (level under Setup, Transmit audio)" />
+              <ToggleButton x:Name="EqToggle" Classes="panel" Content="EQ" ToolTip.Tip="Transmit equaliser (bands under Setup, Transmit audio)" />
+            </WrapPanel>
             <TextBlock x:Name="TxMeterText" HorizontalAlignment="Center" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,4,0,0" />
             <TextBlock x:Name="TxWarning" Classes="warn" IsVisible="False" />
             <TextBlock Classes="caption" x:Name="DriveCaption" Text="Drive" />

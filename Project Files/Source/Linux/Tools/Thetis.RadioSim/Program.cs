@@ -20,8 +20,9 @@ the Linux build without hardware.  It
     power into a load of chosen SWR,
   * decodes the step and Alex attenuators (and applies them to the receive
     signal) and the Alex antenna relays,
-  * reads '<status file>.ctl' ({"swr": 3.0, "ptt": true}) to change the
-    load SWR or press the radio's PTT input while running.
+  * reads '<status file>.ctl' ({"swr": 3.0, "ptt": true, "mic_dbfs": -20})
+    to change the load SWR, press the radio's PTT input or change the mic
+    tone level (-200 = silent) while running.
 
 usage: thetis-radiosim [--bind IP] [--carrier MHz[:dBFS]]... [--noise dBFS] [--status-file PATH] [--max-power W] [--pa-gain dB] [--swr N] [--mic-tone Hz[:dBFS]] [--textbook-iq]
 
@@ -420,6 +421,8 @@ namespace Thetis.RadioSim
                         var ctl = JsonDocument.Parse(File.ReadAllText(statusFile + ".ctl")).RootElement;
                         if (ctl.TryGetProperty("swr", out var sw)) _loadSwr = sw.GetDouble();
                         if (ctl.TryGetProperty("ptt", out var pt)) _radioPtt = pt.GetBoolean();
+                        if (ctl.TryGetProperty("mic_dbfs", out var md))
+                            _micAmp = md.GetDouble() <= -150 ? 0.0 : Math.Pow(10.0, md.GetDouble() / 20.0);
                     }
                     catch (Exception) { }
                 }

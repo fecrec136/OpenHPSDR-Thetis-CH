@@ -69,6 +69,8 @@ namespace Thetis.Desktop
         public MicSource MicSource { get; set; } = MicSource.Radio;
         public int TxFilterLow { get; set; } = 100;
         public int TxFilterHigh { get; set; } = 3000;
+        /// <summary>Leveler, compressor, CESSB, EQ, CFC, phase rotator, VOX and expander.</summary>
+        public TxProcessing TxProcessing { get; set; } = new TxProcessing();
 
         // setup and calibration
         /// <summary>Receive attenuation per band ("GEN" outside the bands), dB.</summary>

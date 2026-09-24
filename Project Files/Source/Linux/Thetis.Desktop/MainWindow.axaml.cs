@@ -260,6 +260,24 @@ namespace Thetis.Desktop
                 _radio.MicGainDb = _settings.MicGainDb = Math.Round(MicGainSlider.Value);
                 RefreshTxCaptions();
             };
+            VoxToggle.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _settings.TxProcessing.VoxOn = VoxToggle.IsChecked == true;
+                _radio.ApplyTxProcessing();
+            };
+            CompToggle.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _settings.TxProcessing.CompressorOn = CompToggle.IsChecked == true;
+                _radio.ApplyTxProcessing();
+            };
+            EqToggle.IsCheckedChanged += (_, _) =>
+            {
+                if (_updating) return;
+                _settings.TxProcessing.EqOn = EqToggle.IsChecked == true;
+                _radio.ApplyTxProcessing();
+            };
             MicSourceBox.SelectionChanged += (_, _) =>
             {
                 if (_updating || MicSourceBox.SelectedIndex < 0) return;
@@ -343,6 +361,7 @@ namespace Thetis.Desktop
             HPSDRModel model = SelectedModel;
             ApplyModelCalibration(model);
             var w = new SetupWindow(_radio, _settings, model, SaveSettings);
+            w.Closed += (_, _) => RefreshTx();     // VOX / COMP / EQ may have changed there
             w.Show(this);
         }
 
@@ -411,6 +430,7 @@ namespace Thetis.Desktop
             _radio.MicGainDb = _settings.MicGainDb;
             _radio.MicSource = _settings.MicSource;
             _radio.TxFilter = (_settings.TxFilterLow, _settings.TxFilterHigh);
+            _radio.TxProcessing = _settings.TxProcessing ??= new TxProcessing();
             if (_settings.LpfEdges != null) BandFilters.LpfEdges = _settings.LpfEdges;
             if (_settings.HpfEdges != null) BandFilters.HpfEdges = _settings.HpfEdges;
             if (_settings.Bpf1Edges != null) BandFilters.Bpf1Edges = _settings.Bpf1Edges;
@@ -743,6 +763,9 @@ namespace Thetis.Desktop
             TunePowerSlider.Value = _settings.TunePercent;
             MicGainSlider.Value = _settings.MicGainDb;
             MicSourceBox.SelectedIndex = _settings.MicSource == MicSource.Pc ? 1 : 0;
+            VoxToggle.IsChecked = _settings.TxProcessing.VoxOn;
+            CompToggle.IsChecked = _settings.TxProcessing.CompressorOn;
+            EqToggle.IsChecked = _settings.TxProcessing.EqOn;
             TxEnableCheck.IsChecked = _settings.TransmitAllowed;
             RegionBox.SelectedIndex = Math.Max(0, Array.FindIndex(_regions, r => r.region == _settings.Region));
             TxLowBox.Value = _settings.TxFilterLow;
@@ -768,8 +791,10 @@ namespace Thetis.Desktop
             // WDSP's transmit meters only run while the transmitter does, as in the console
             TxMeterText.Text = _radio.Mox
                 ? $"{_radio.ForwardWatts,5:0.0} W   SWR {_radio.Swr:0.0}\nmic {Math.Clamp(_radio.MicPeakDb(), -99f, 99f),3:0} dB  ALC {Math.Clamp(_radio.AlcGainDb(), -99f, 99f),3:0} dB"
-                : "";
-            TxMeterText.IsVisible = _radio.Mox;
+                : _settings.TxProcessing.VoxOn && _radio.PowerOn
+                    ? $"VOX {(_radio.VoxActive ? "heard" : "listening")}  mic {Math.Clamp(_radio.VoxPeakDb(), -99.0, 99.0),3:0} / {_settings.TxProcessing.VoxThresholdDb:0} dB"
+                    : "";
+            TxMeterText.IsVisible = TxMeterText.Text.Length > 0;
 
             string warn = null;
             if (!_settings.TransmitAllowed) warn = "Transmit is off. Enable it under Transmit settings.";
