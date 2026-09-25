@@ -223,7 +223,6 @@ common base:
   * `SetChannelState` restart fixes: a stop quickly followed by a start could
     leave a channel silently dead, which is the transmit/receive keying
     pattern
-* `wdsp.vcxproj` lists the new files for the Windows build.
 
 2.10 plans more FFT sizes and kinds, so its FFTW wisdom file is new
 (`wdspWisdom01`). The first start after updating builds it, which takes
@@ -808,7 +807,7 @@ the ZZ commands. Choose the port or the virtual port's name, and PTT method
 **Report DIGU / DIGL as USB / LSB** in Setup, which makes USB select DIGU.
 Or leave that off and set USB or DIGU on the main window.
 
-**Commands:** the Windows console's (Console/CAT): Kenwood TS-2000 and the
+**Commands:** the Windows console's (its `Console/CAT`): Kenwood TS-2000 and the
 Thetis ZZ commands, with the console's formats. The console's own command
 table (`CATStructs.xml`) is embedded unchanged, so lengths and errors match:
 `?;` for an unknown command or wrong length, and no answer to a set. The 88

@@ -5,12 +5,20 @@ Some upstream files cannot be compiled as-is on .NET 8 / Linux because they
 are entangled with WinForms or the Console form, but contain large blocks
 (P/Invoke tables, radio router tables) that must stay identical to upstream.
 This script copies those blocks verbatim so they can be refreshed after an
-upstream merge:  python3 tools/sync_upstream.py
+upstream merge.  The Windows console's sources are no longer in this
+repository (only the few files the Linux build compiles are kept), so give
+it a checkout of upstream Thetis (github.com/ramdor/Thetis):
+
+    python3 tools/sync_upstream.py /path/to/Thetis
 """
-import pathlib, re
+import pathlib, re, sys
 
 here = pathlib.Path(__file__).resolve().parent.parent
-console = here.parent / "Console"
+if len(sys.argv) != 2:
+    sys.exit("usage: sync_upstream.py <upstream Thetis checkout>")
+console = pathlib.Path(sys.argv[1]).resolve() / "Project Files" / "Source" / "Console"
+if not (console / "cmaster.cs").exists():
+    sys.exit(f"{console / 'cmaster.cs'} not found: give the root of an upstream Thetis checkout")
 out_dir = here / "Thetis.Core" / "Upstream"
 out_dir.mkdir(parents=True, exist_ok=True)
 
