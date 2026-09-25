@@ -75,7 +75,7 @@ namespace Thetis.Desktop
         public TxProcessing TxProcessing { get; set; } = new TxProcessing();
         /// <summary>CAT ports (serial, USB to RS232, virtual), the TCP CAT server and the TCI server.</summary>
         public Thetis.Cat.CatSettings Cat { get; set; } = new Thetis.Cat.CatSettings();
-        /// <summary>Dockable panels (bands, modes, filters, transmit audio) by key: shown, where, order, own window.</summary>
+        /// <summary>Dockable panels (bands, modes, filters, meter, transmit, AGC, ...) by key: shown, where, order, size, own window.</summary>
         public Dictionary<string, PanelLayout> Panels { get; set; } = new Dictionary<string, PanelLayout>();
         /// <summary>Sizes of the docking places (shared by the panels docked there).</summary>
         public double DockLeftWidth { get; set; } = 330;
@@ -166,6 +166,9 @@ namespace Thetis.Desktop
         public int? Y { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
+        /// <summary>Docked: the height set with the panel's grip (its width at the bottom); null = fit the contents.</summary>
+        public double? DockHeight { get; set; }
+        public double? DockWidth { get; set; }
     }
 
     /// <summary>

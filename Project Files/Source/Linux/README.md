@@ -83,7 +83,7 @@ The first start optimises the FFTs for your computer (FFTW "wisdom"). This
 takes several minutes, and later starts are quick. Then pick your radio and
 its model at the top, press **POWER**, and choose the sound device for
 receive audio at the bottom. Transmitting is off until you enable it and
-choose your region under **Transmit settings** (see [Transmit](#transmit)).
+choose your region in the **Transmit settings** panel (View menu; see [Transmit](#transmit)).
 
 ## Stage 1: native libraries
 
@@ -317,7 +317,7 @@ controls as the panels, so the two always agree.
 | Receive | Enter frequency, band, mode, filter, tuning step, AGC, attenuator, noise reduction (and its settings), ANF |
 | Transmit | MOX, TUNE, VOX, compressor, EQ, leveler, CESSB, CFC, phase rotator, expander, microphone, allow transmitting, region, radio PTT, SWR protection, HL2 N2ADR board, transmit filter and timeout, PA gain |
 | Audio | PC audio, sound system, output device, input device |
-| View | Zoom in / out, full span, reset the spectrum scale, transmit settings panel |
+| View | Zoom in / out, full span, reset the spectrum scale, transmit settings panel, panels (show, place, fit, reset) |
 | Setup | The setup window, or any of its pages directly |
 | Help | Keyboard and mouse, receive diagnostics, project page, about |
 
@@ -328,24 +328,48 @@ cannot key the transmitter.
 
 ### Dockable panels
 
-![Bands on the left, modes at the bottom, filter widths in their own window, transmit audio on the right](docs/screenshot-panels.png)
+![Band, mode and filter buttons and the S-meter at the top; AGC, noise reduction and receive gain on the left; transmit on the right](docs/screenshot-panels.png)
 
-The **band buttons**, the **mode buttons**, the **filter width buttons** and
-the [transmit audio panel](#transmit-audio-panel) are separate panels. Each
-has a title bar with buttons that put it:
+Everything around the panadapter is a separate panel:
 
-* ⬒ at the top, next to the VFO. The button panels are here by default, where
-  the Windows console has them.
+| Panel | Contents | Default place |
+|---|---|---|
+| Bands, Modes, Filter width | The band, mode and filter width buttons | Top, next to the VFO |
+| S-meter | The receive meter (S units and dBm) | Right |
+| Transmit | MOX, TUNE, VOX, COMP, EQ, AUDIO, PS-A, 2-TONE, the power and SWR readout, drive, tune power, mic gain, microphone | Right |
+| Transmit settings | Allow transmitting, region, transmit filter, timeout, radio PTT, SWR protection, band limit beep, HL2 N2ADR board | Hidden (View menu) |
+| Receive gain | Attenuator and AF (volume) | Right |
+| AGC | The AGC modes and the AGC gain | Right |
+| Noise reduction | NR, NR2, NR4, DFNR, NNR, ... and ANF | Right |
+| Tuning and display | Tuning step and panadapter zoom | Right |
+| [Transmit audio](#transmit-audio-panel) | EQ, leveler, compressor, CFC, VOX, meters | Hidden (AUDIO button) |
+
+Each panel has a title bar with buttons that put it:
+
+* ⬒ at the top, next to the VFO. The button panels and the S-meter can go
+  here.
 * ◧ on the left or ◨ on the right of the panadapter
 * ⬓ below the panadapter
 * ⧉ in a window of its own
 
 ✕ closes a panel. Dragging a docked panel's title bar takes it out into a
-window. Several panels can share a place, and they keep their order. The
-lines between the panadapter and the left, right and bottom places resize
-them. A place with only button panels fits them, and the button rows wrap to
-its width. **View → Panels** shows, hides and places each panel, and
-**Reset the panel layout** puts everything back. Where each panel is and its
+window. Several panels can share a place, and they keep their order.
+
+Every panel can be resized:
+
+* The lines between the panadapter and the left, right and bottom places set
+  the width of the left and right columns and the height of the bottom row.
+* The grip on a docked panel's edge sets that panel's own size: its bottom
+  edge sets its height at the top, left and right, and its right edge sets
+  its width at the bottom. The grip lights up under the mouse. When the
+  contents do not fit, the panel scrolls; double-clicking the grip (or
+  **View → Panels → *panel* → Fit to the contents**) sizes it to its
+  contents again.
+* A panel in its own window is resized like any window.
+
+A place with only button panels fits them, and the button rows wrap to its
+width. **View → Panels** shows, hides and places each panel, and **Reset the
+panel layout** puts everything back. Where each panel is, its size and its
 window's position and size are saved.
 
 ### PC audio (VAC)

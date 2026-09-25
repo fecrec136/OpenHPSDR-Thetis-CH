@@ -41,92 +41,87 @@
       </StackPanel>
     </Border>
 
-    <!-- right column: meter and receiver controls -->
-    <ScrollViewer DockPanel.Dock="Right" Width="290" VerticalScrollBarVisibility="Auto">
-      <StackPanel>
-        <Border Classes="group">
-          <StackPanel>
-            <c:SMeter x:Name="Meter" Height="46" />
-            <TextBlock x:Name="MeterText" HorizontalAlignment="Right" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,3,0,0" />
-          </StackPanel>
-        </Border>
-
-        <Border Classes="group">
-          <StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-              <ToggleButton x:Name="MoxButton" Classes="tx" Content="MOX" ToolTip.Tip="Transmit (the radio's PTT input also keys it)" />
-              <ToggleButton x:Name="TuneButton" Classes="tx" Content="TUNE" ToolTip.Tip="Send a steady carrier at the tune power" />
-            </StackPanel>
-            <WrapPanel HorizontalAlignment="Center" Margin="0,4,0,0">
-              <ToggleButton x:Name="VoxToggle" Classes="panel" Content="VOX" ToolTip.Tip="Voice-operated transmit (threshold and hold under Setup, Transmit audio)" />
-              <ToggleButton x:Name="CompToggle" Classes="panel" Content="COMP" ToolTip.Tip="Speech compressor (level under Setup, Transmit audio)" />
-              <ToggleButton x:Name="EqToggle" Classes="panel" Content="EQ" ToolTip.Tip="Transmit equaliser (bands under Setup, Transmit audio)" />
-              <ToggleButton x:Name="TxPanelToggle" Classes="panel" Content="AUDIO" ToolTip.Tip="The transmit audio panel: EQ, leveler, compressor, CFC, VOX, meters (View menu)" />
-              <ToggleButton x:Name="PsToggle" Classes="panel" Content="PS-A" ToolTip.Tip="PureSignal: correct the amplifier's distortion, calibrating continuously while transmitting (Setup, PureSignal)" />
-              <ToggleButton x:Name="TwoToneToggle" Classes="tx" Content="2-TONE" MinWidth="60" Height="26" FontSize="11" ToolTip.Tip="Transmit the two-tone test signal (for PureSignal calibration and IMD tests)" />
-            </WrapPanel>
-            <TextBlock x:Name="PsStatusText" HorizontalAlignment="Center" FontSize="11" Margin="0,2,0,0" IsVisible="False" TextWrapping="Wrap" />
-            <TextBlock x:Name="TxMeterText" HorizontalAlignment="Center" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,4,0,0" />
-            <TextBlock x:Name="TxWarning" Classes="warn" IsVisible="False" />
-            <TextBlock Classes="caption" x:Name="DriveCaption" Text="Drive" />
-            <Slider x:Name="DriveSlider" Minimum="0" Maximum="100" />
-            <TextBlock Classes="caption" x:Name="TunePowerCaption" Text="Tune power" />
-            <Slider x:Name="TunePowerSlider" Minimum="0" Maximum="100" />
-            <TextBlock Classes="caption" x:Name="MicGainCaption" Text="Mic gain" />
-            <Slider x:Name="MicGainSlider" Minimum="-40" Maximum="70" />
-            <TextBlock Classes="caption" Text="Microphone" />
-            <ComboBox x:Name="MicSourceBox" HorizontalAlignment="Stretch" />
-            <Expander x:Name="TxSettingsExpander" Header="Transmit settings" HorizontalAlignment="Stretch" Margin="0,6,0,0">
-              <StackPanel>
-                <CheckBox x:Name="TxEnableCheck" Content="Allow transmitting" />
-                <TextBlock Classes="caption" Text="Region (limits transmit to the amateur bands)" TextWrapping="Wrap" />
-                <ComboBox x:Name="RegionBox" HorizontalAlignment="Stretch" />
-                <TextBlock Classes="caption" Text="Transmit filter (Hz)" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <NumericUpDown x:Name="TxLowBox" Minimum="0" Maximum="1000" Increment="50" FormatString="0" Width="110" />
-                  <NumericUpDown x:Name="TxHighBox" Minimum="1000" Maximum="10000" Increment="100" FormatString="0" Width="120" />
-                </StackPanel>
-                <TextBlock Classes="caption" Text="Transmit timeout (s, 0 = off)" />
-                <NumericUpDown x:Name="TxTimeoutBox" Minimum="0" Maximum="3600" Increment="30" FormatString="0" HorizontalAlignment="Stretch" />
-                <CheckBox x:Name="RadioPttCheck" Content="Key from the radio's PTT input" />
-                <CheckBox x:Name="SwrProtectCheck" Content="SWR protection" />
-                <CheckBox x:Name="BandLimitBeepCheck" Content="Beep when tuning out of a band" ToolTip.Tip="The band limits of the region are the red dashed lines on the panadapter" />
-                <CheckBox x:Name="N2adrCheck" Content="HL2: N2ADR filter board" ToolTip.Tip="Open-collector outputs for the N2ADR filter board (Hermes-Lite 2). Takes effect at the next power on." />
-              </StackPanel>
-            </Expander>
-          </StackPanel>
-        </Border>
-
-        <Border Classes="group">
-          <StackPanel>
-            <TextBlock Classes="caption" x:Name="AttCaption" Text="Attenuator" ToolTip.Tip="Receive attenuator, remembered per band" />
-            <Slider x:Name="AttSlider" Minimum="0" Maximum="31" TickFrequency="1" IsSnapToTickEnabled="True" />
-            <TextBlock Classes="caption" Text="AF (volume)" />
-            <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" />
-            <TextBlock Classes="caption" Text="AGC" />
-            <WrapPanel x:Name="AgcPanel" />
-            <TextBlock Classes="caption" x:Name="AgcTopCaption" Text="AGC gain" TextWrapping="Wrap"
-                       ToolTip.Tip="The most the AGC may amplify the signal (the console's AGC-T). Not a volume control: use AF for that. Usually 80-90 dB." />
-            <Slider x:Name="AgcTopSlider" Minimum="-20" Maximum="120" />
-            <TextBlock Classes="caption" x:Name="NoiseCaption" Text="Noise reduction" />
-            <WrapPanel>
-              <WrapPanel x:Name="NrPanel" />
-              <ToggleButton x:Name="AnfToggle" Classes="panel" Content="ANF" ToolTip.Tip="Automatic notch filter" />
-            </WrapPanel>
-          </StackPanel>
-        </Border>
-
-        <Border Classes="group">
-          <StackPanel>
-            <TextBlock Classes="caption" Text="Tuning step" />
-            <ComboBox x:Name="StepBox" HorizontalAlignment="Stretch" />
-            <TextBlock Classes="caption" Text="Panadapter zoom" />
-            <Slider x:Name="ZoomSlider" Minimum="0" Maximum="100" />
-            <TextBlock Classes="caption" Text="Wheel: tune   Ctrl+wheel: move scale   Shift+wheel: range" TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
+    <!-- the contents of the dockable panels (MainWindow.Panels.cs takes them out of here
+         into their frames; by default they stand on the right of the panadapter) -->
+    <Panel x:Name="PanelParts" DockPanel.Dock="Right" IsVisible="False">
+      <StackPanel x:Name="MeterPart" Margin="6">
+        <c:SMeter x:Name="Meter" Height="46" />
+        <TextBlock x:Name="MeterText" HorizontalAlignment="Right" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,3,0,0" />
       </StackPanel>
-    </ScrollViewer>
+
+      <StackPanel x:Name="TransmitPart" Margin="6,4">
+        <WrapPanel HorizontalAlignment="Center">
+          <ToggleButton x:Name="MoxButton" Classes="tx" Content="MOX" ToolTip.Tip="Transmit (the radio's PTT input also keys it)" />
+          <ToggleButton x:Name="TuneButton" Classes="tx" Content="TUNE" ToolTip.Tip="Send a steady carrier at the tune power" />
+        </WrapPanel>
+        <WrapPanel HorizontalAlignment="Center" Margin="0,4,0,0">
+          <ToggleButton x:Name="VoxToggle" Classes="panel" Content="VOX" ToolTip.Tip="Voice-operated transmit (threshold and hold in the transmit audio panel)" />
+          <ToggleButton x:Name="CompToggle" Classes="panel" Content="COMP" ToolTip.Tip="Speech compressor (level in the transmit audio panel)" />
+          <ToggleButton x:Name="EqToggle" Classes="panel" Content="EQ" ToolTip.Tip="Transmit equaliser (bands in the transmit audio panel)" />
+          <ToggleButton x:Name="TxPanelToggle" Classes="panel" Content="AUDIO" ToolTip.Tip="The transmit audio panel: EQ, leveler, compressor, CFC, VOX, meters (View menu)" />
+          <ToggleButton x:Name="PsToggle" Classes="panel" Content="PS-A" ToolTip.Tip="PureSignal: correct the amplifier's distortion, calibrating continuously while transmitting (Setup, PureSignal)" />
+          <ToggleButton x:Name="TwoToneToggle" Classes="tx" Content="2-TONE" MinWidth="60" Height="26" FontSize="11" ToolTip.Tip="Transmit the two-tone test signal (for PureSignal calibration and IMD tests)" />
+        </WrapPanel>
+        <TextBlock x:Name="PsStatusText" HorizontalAlignment="Center" FontSize="11" Margin="0,2,0,0" IsVisible="False" TextWrapping="Wrap" />
+        <TextBlock x:Name="TxMeterText" HorizontalAlignment="Center" FontFamily="DejaVu Sans Mono, monospace" Foreground="#C5CED6" Margin="0,4,0,0" />
+        <TextBlock x:Name="TxWarning" Classes="warn" IsVisible="False" />
+        <TextBlock Classes="caption" x:Name="DriveCaption" Text="Drive" />
+        <Slider x:Name="DriveSlider" Minimum="0" Maximum="100" />
+        <TextBlock Classes="caption" x:Name="TunePowerCaption" Text="Tune power" />
+        <Slider x:Name="TunePowerSlider" Minimum="0" Maximum="100" />
+        <TextBlock Classes="caption" x:Name="MicGainCaption" Text="Mic gain" />
+        <Slider x:Name="MicGainSlider" Minimum="-40" Maximum="70" />
+        <TextBlock Classes="caption" Text="Microphone" />
+        <ComboBox x:Name="MicSourceBox" HorizontalAlignment="Stretch" />
+      </StackPanel>
+
+      <StackPanel x:Name="TxSettingsPart" Margin="6,0,6,6">
+        <CheckBox x:Name="TxEnableCheck" Content="Allow transmitting" />
+        <TextBlock Classes="caption" Text="Region (limits transmit to the amateur bands)" TextWrapping="Wrap" />
+        <ComboBox x:Name="RegionBox" HorizontalAlignment="Stretch" />
+        <TextBlock Classes="caption" Text="Transmit filter (Hz)" />
+        <WrapPanel>
+          <NumericUpDown x:Name="TxLowBox" Minimum="0" Maximum="1000" Increment="50" FormatString="0" Width="110" Margin="0,0,4,0" />
+          <NumericUpDown x:Name="TxHighBox" Minimum="1000" Maximum="10000" Increment="100" FormatString="0" Width="120" />
+        </WrapPanel>
+        <TextBlock Classes="caption" Text="Transmit timeout (s, 0 = off)" />
+        <NumericUpDown x:Name="TxTimeoutBox" Minimum="0" Maximum="3600" Increment="30" FormatString="0" HorizontalAlignment="Stretch" />
+        <CheckBox x:Name="RadioPttCheck" Content="Key from the radio's PTT input" />
+        <CheckBox x:Name="SwrProtectCheck" Content="SWR protection" />
+        <CheckBox x:Name="BandLimitBeepCheck" Content="Beep when tuning out of a band" ToolTip.Tip="The band limits of the region are the red dashed lines on the panadapter" />
+        <CheckBox x:Name="N2adrCheck" Content="HL2: N2ADR filter board" ToolTip.Tip="Open-collector outputs for the N2ADR filter board (Hermes-Lite 2). Takes effect at the next power on." />
+      </StackPanel>
+
+      <StackPanel x:Name="ReceivePart" Margin="6,0,6,6">
+        <TextBlock Classes="caption" x:Name="AttCaption" Text="Attenuator" ToolTip.Tip="Receive attenuator, remembered per band" />
+        <Slider x:Name="AttSlider" Minimum="0" Maximum="31" TickFrequency="1" IsSnapToTickEnabled="True" />
+        <TextBlock Classes="caption" Text="AF (volume)" />
+        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" />
+      </StackPanel>
+
+      <StackPanel x:Name="AgcPart" Margin="6,0,6,6">
+        <WrapPanel x:Name="AgcPanel" Margin="0,4,0,0" />
+        <TextBlock Classes="caption" x:Name="AgcTopCaption" Text="AGC gain" TextWrapping="Wrap"
+                   ToolTip.Tip="The most the AGC may amplify the signal (the console's AGC-T). Not a volume control: use AF for that. Usually 80-90 dB." />
+        <Slider x:Name="AgcTopSlider" Minimum="-20" Maximum="120" />
+      </StackPanel>
+
+      <StackPanel x:Name="NoisePart" Margin="6,0,6,6">
+        <TextBlock Classes="caption" x:Name="NoiseCaption" Text="Noise reduction" />
+        <WrapPanel>
+          <WrapPanel x:Name="NrPanel" />
+          <ToggleButton x:Name="AnfToggle" Classes="panel" Content="ANF" ToolTip.Tip="Automatic notch filter" />
+        </WrapPanel>
+      </StackPanel>
+
+      <StackPanel x:Name="DisplayPart" Margin="6,0,6,6">
+        <TextBlock Classes="caption" Text="Tuning step" />
+        <ComboBox x:Name="StepBox" HorizontalAlignment="Stretch" />
+        <TextBlock Classes="caption" Text="Panadapter zoom" />
+        <Slider x:Name="ZoomSlider" Minimum="0" Maximum="100" />
+        <TextBlock Classes="caption" Text="Wheel: tune   Ctrl+wheel: move scale   Shift+wheel: range" TextWrapping="Wrap" />
+      </StackPanel>
+    </Panel>
 
     <!-- VFO, band, mode, filter -->
     <Border DockPanel.Dock="Top" Classes="group">

@@ -199,7 +199,7 @@ namespace Thetis.Desktop
             new Separator(),
             Item("_Reset the spectrum scale", ResetSpectrumView),
             new Separator(),
-            Check("_Transmit settings panel", TxSettingsExpander.IsExpanded, () => TxSettingsExpander.IsExpanded = !TxSettingsExpander.IsExpanded),
+            Check("_Transmit settings panel", IsPanelShown(TxSettingsPanelKey), () => ShowPanel(TxSettingsPanelKey, !IsPanelShown(TxSettingsPanelKey))),
             Sub("_Panels", PanelMenus()),
         };
 
@@ -296,8 +296,7 @@ namespace Thetis.Desktop
 
         private void ShowTxSettings()
         {
-            TxSettingsExpander.IsExpanded = true;
-            TxSettingsExpander.BringIntoView();
+            RevealPanel(TxSettingsPanelKey);
         }
 
         private void ResetSpectrumView()

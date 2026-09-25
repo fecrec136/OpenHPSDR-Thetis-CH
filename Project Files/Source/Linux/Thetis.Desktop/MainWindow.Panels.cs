@@ -3,11 +3,14 @@
 This file is part of a program that implements a Software-Defined Radio.
 
 The dockable panels: the band buttons, the mode buttons, the filter width
-buttons and the transmit audio panel.  Each can sit at the top (next to the
-VFO, where the buttons are by default), on the left or right of the
-panadapter, below it, or in a window of its own; several panels can share a
-place.  The splitters resize the left, right and bottom places.  Where each
-panel is, its order and its window are saved with the settings.
+buttons, the S-meter, transmit (MOX, TUNE, drive, mic gain), transmit
+settings, receive gain, AGC, noise reduction, tuning and display, and the
+transmit audio panel.  Each can sit at the top (next to the VFO, where the
+buttons are by default), on the left or right of the panadapter (where the
+rest are), below it, or in a window of its own; several panels can share a
+place.  The splitters resize the left, right and bottom places, and each
+docked panel's grip its own height (or its width at the bottom).  Where each
+panel is, its order, size and window are saved with the settings.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -22,6 +25,7 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Thetis.Desktop.Controls;
 
 namespace Thetis.Desktop
@@ -49,6 +53,8 @@ namespace Thetis.Desktop
         private bool _closingMain;          // the main window is closing: its panel windows close with it, still shown
 
         public const string BandPanelKey = "bands", ModePanelKey = "modes", FilterPanelKey = "filters", TxPanelKey = "txaudio";
+        public const string MeterPanelKey = "meter", TransmitPanelKey = "transmit", TxSettingsPanelKey = "txsettings",
+                            ReceivePanelKey = "receive", AgcPanelKey = "agc", NoisePanelKey = "nr", DisplayPanelKey = "tuning";
 
         private const double DockMinWidth = 200, DockMinHeight = 60;
 
@@ -60,16 +66,37 @@ namespace Thetis.Desktop
             AddPanel(BandPanelKey, "Bands", BandPanel, allowTop: true, compact: true, PanelDock.Top, true, 0);
             AddPanel(ModePanelKey, "Modes", ModePanel, allowTop: true, compact: true, PanelDock.Top, true, 1);
             AddPanel(FilterPanelKey, "Filter width", FilterPanel, allowTop: true, compact: true, PanelDock.Top, true, 2);
-            AddPanel(TxPanelKey, "Transmit audio", _txPanel, allowTop: false, compact: false, PanelDock.Right, false, 3);
+            // what was the fixed column on the right: taken out of PanelParts (MainWindow.axaml)
+            AddPart(MeterPanelKey, "S-meter", MeterPart, allowTop: true, visible: true, 10);
+            AddPart(TransmitPanelKey, "Transmit", TransmitPart, allowTop: false, visible: true, 11);
+            AddPart(TxSettingsPanelKey, "Transmit settings", TxSettingsPart, allowTop: false, visible: false, 12);
+            AddPart(ReceivePanelKey, "Receive gain", ReceivePart, allowTop: false, visible: true, 13);
+            AddPart(AgcPanelKey, "AGC", AgcPart, allowTop: false, visible: true, 14);
+            AddPart(NoisePanelKey, "Noise reduction", NoisePart, allowTop: false, visible: true, 15);
+            AddPart(DisplayPanelKey, "Tuning and display", DisplayPart, allowTop: false, visible: true, 16);
+            AddPanel(TxPanelKey, "Transmit audio", _txPanel, allowTop: false, compact: false, PanelDock.Right, false, 17, scroll: false);
             MigrateTxPanelSettings();
         }
 
-        private void AddPanel(string key, string title, Control body, bool allowTop, bool compact, PanelDock dock, bool visible, int order)
+        private void AddPart(string key, string title, Control part, bool allowTop, bool visible, int order)
         {
-            var frame = new DockFrame(key, title, body, allowTop, compact);
+            PanelParts.Children.Remove(part);
+            AddPanel(key, title, part, allowTop, compact: false, PanelDock.Right, visible, order);
+        }
+
+        private void AddPanel(string key, string title, Control body, bool allowTop, bool compact, PanelDock dock, bool visible, int order,
+                              bool scroll = true)
+        {
+            var frame = new DockFrame(key, title, body, allowTop, compact, scroll);
             frame.DockRequested += d => MovePanel(key, d);
             frame.CloseRequested += () => ShowPanel(key, false);
             frame.TearOffRequested += at => MovePanel(key, PanelDock.Float, at);
+            frame.Resized += size =>
+            {
+                var l = Layout(key);
+                if (frame.Dock == PanelDock.Bottom) l.DockWidth = size;
+                else l.DockHeight = size;
+            };
             _panels[key] = new DockedPanel { Frame = frame, DefaultDock = dock, DefaultVisible = visible, DefaultOrder = order };
         }
 
@@ -82,7 +109,7 @@ namespace Thetis.Desktop
             {
                 Visible = _settings.TxPanelVisible,
                 Dock = _settings.TxPanelDock == PanelDock.Top ? PanelDock.Right : _settings.TxPanelDock,
-                Order = 3,
+                Order = 17,
                 X = _settings.TxPanelX,
                 Y = _settings.TxPanelY,
                 Width = _settings.TxPanelFloatWidth,
@@ -148,7 +175,7 @@ namespace Thetis.Desktop
             SyncPanelToggles();
         }
 
-        /// <summary>Everything back to the defaults: buttons at the top, transmit audio hidden on the right.</summary>
+        /// <summary>Everything back to the defaults: buttons at the top, the rest on the right, transmit audio hidden.</summary>
         private void ResetPanelLayout()
         {
             foreach (var key in _panels.Keys) Detach(key, false);
@@ -173,6 +200,7 @@ namespace Thetis.Desktop
             var l = Layout(key);
             Detach(key, keepWindow: dock == PanelDock.Float && at == null);
             p.Frame.Dock = dock;
+            p.Frame.SetDockedSize(dock == PanelDock.Bottom ? l.DockWidth : l.DockHeight);
             if (p.Frame.Body == _txPanel) _txPanel.Refresh();
 
             var area = Area(dock);
@@ -304,6 +332,15 @@ namespace Thetis.Desktop
             _updating = false;
         }
 
+        /// <summary>Show a panel and scroll the docking place to it.</summary>
+        private void RevealPanel(string key)
+        {
+            ShowPanel(key, true);
+            var p = _panels[key];
+            if (p.Window != null) p.Window.Activate();
+            else Dispatcher.UIThread.Post(() => p.Frame.BringIntoView());
+        }
+
         /// <summary>View menu: each panel with show / hide and where it goes.</summary>
         private List<Control> PanelMenus()
         {
@@ -319,6 +356,9 @@ namespace Thetis.Desktop
                 sub.Add(Radio("_Right", shown && l.Dock == PanelDock.Right, () => MovePanel(key, PanelDock.Right)));
                 sub.Add(Radio("_Bottom", shown && l.Dock == PanelDock.Bottom, () => MovePanel(key, PanelDock.Bottom)));
                 sub.Add(Radio("_Own window", shown && l.Dock == PanelDock.Float, () => MovePanel(key, PanelDock.Float)));
+                sub.Add(new Separator());
+                sub.Add(Item("_Fit to the contents", () => { l.DockHeight = l.DockWidth = null; p.Frame.SetDockedSize(null); },
+                             enabled: shown && p.Frame.Dock != PanelDock.Float && (l.DockHeight != null || l.DockWidth != null)));
                 items.Add(Sub(p.Frame.Title, sub));
             }
             items.Add(new Separator());
