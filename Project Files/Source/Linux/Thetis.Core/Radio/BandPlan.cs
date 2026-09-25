@@ -16,7 +16,7 @@ of the License, or (at your option) any later version.
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Thetis.Desktop
+namespace Thetis.Radio
 {
     public sealed record BandInfo(string Name, double LowMHz, double HighMHz, double DefaultMHz, DSPMode DefaultMode);
 

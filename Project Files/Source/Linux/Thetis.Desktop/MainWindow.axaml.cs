@@ -82,6 +82,7 @@ namespace Thetis.Desktop
             Opened += async (_, _) => await StartDspAsync();
             Closing += (_, _) => Shutdown();
             Opened += (_, _) => { if (_settings.TxPanelVisible) ShowTxPanel(true); };
+            Opened += (_, _) => StartCat();
             // killed or crashed without closing the window: Thetis.Core unkeys the
             // radio; keep the settings too
             AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { _settings.Save(); } catch (Exception) { } };
@@ -157,7 +158,8 @@ namespace Thetis.Desktop
             VolumeSlider.PropertyChanged += (_, e) =>
             {
                 if (e.Property != RangeBase.ValueProperty || _updating) return;
-                _radio.Volume = _settings.Volume = VolumeSlider.Value / 100.0;
+                _settings.Volume = VolumeSlider.Value / 100.0;
+                _radio.Volume = _catMute ? 0 : _settings.Volume;      // muted over CAT / TCI until unmuted
             };
             AgcTopSlider.PropertyChanged += (_, e) =>
             {
@@ -497,6 +499,7 @@ namespace Thetis.Desktop
 
         private void Shutdown()
         {
+            StopCat();
             _timer.Stop();
             _settings.WindowWidth = Width;
             _settings.WindowHeight = Height;

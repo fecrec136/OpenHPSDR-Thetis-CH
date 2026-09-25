@@ -21,4 +21,11 @@
     <Compile Include="$(ConsoleDir)HPSDR/specHPSDR.cs" Link="Upstream/specHPSDR.cs" />
     <Compile Include="$(ConsoleDir)HPSDR/Penny.cs" Link="Upstream/Penny.cs" />
   </ItemGroup>
+  <!-- CAT: upstream's command table (parameter lengths per command), unmodified -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(ConsoleDir)CAT/CATStructs.xml" Link="Upstream/CATStructs.xml" LogicalName="CATStructs.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
 </Project>

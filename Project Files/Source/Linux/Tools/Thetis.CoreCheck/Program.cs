@@ -26,7 +26,7 @@ using System.Threading;
 using Thetis;
 using Thetis.Radio;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _failures;
 
@@ -725,6 +725,19 @@ internal static class Program
             if (!radio.Start(target, psModel, out string e1)) { Console.WriteLine("start failed: " + e1); return 1; }
             Thread.Sleep(2000);
             PureSignal(radio, statusFile, 7.100);
+            radio.Stop();
+            return _failures == 0 ? 0 : 1;
+        }
+
+        int catArg = Array.IndexOf(args, "--cat");
+        if (catArg >= 0)
+        {
+            radio.SampleRate = 48000;
+            radio.Mode = DSPMode.USB;
+            radio.FrequencyMHz = 7.100;
+            if (!radio.Start(target, HPSDRModel.HERMES, out string e2)) { Console.WriteLine("start failed: " + e2); return 1; }
+            Thread.Sleep(2000);
+            CatCheck(radio, statusFile, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(statusFile)), "catcheck"));
             radio.Stop();
             return _failures == 0 ? 0 : 1;
         }

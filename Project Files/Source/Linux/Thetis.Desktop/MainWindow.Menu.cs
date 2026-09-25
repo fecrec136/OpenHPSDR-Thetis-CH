@@ -284,7 +284,7 @@ namespace Thetis.Desktop
             {
                 HPSDRModel model = SelectedModel;
                 ApplyModelCalibration(model);
-                _setupWindow = new SetupWindow(_radio, _settings, model, SaveSettings);
+                _setupWindow = new SetupWindow(_radio, _settings, model, SaveSettings, _cat, ApplyCatSettings);
                 _setupWindow.Closed += (_, _) =>
                 {
                     _setupWindow = null;

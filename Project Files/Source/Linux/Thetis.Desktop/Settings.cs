@@ -71,6 +71,8 @@ namespace Thetis.Desktop
         public int TxFilterHigh { get; set; } = 3000;
         /// <summary>Leveler, compressor, CESSB, EQ, CFC, phase rotator, VOX and expander.</summary>
         public TxProcessing TxProcessing { get; set; } = new TxProcessing();
+        /// <summary>CAT ports (serial, USB to RS232, virtual), the TCP CAT server and the TCI server.</summary>
+        public Thetis.Cat.CatSettings Cat { get; set; } = new Thetis.Cat.CatSettings();
         /// <summary>The transmit audio panel: shown, where, and its size (docked) or window (floating).</summary>
         public bool TxPanelVisible { get; set; }
         public Thetis.Desktop.Controls.TxPanelDock TxPanelDock { get; set; } = Thetis.Desktop.Controls.TxPanelDock.Right;

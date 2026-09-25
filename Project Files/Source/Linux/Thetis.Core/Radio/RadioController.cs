@@ -702,6 +702,9 @@ namespace Thetis.Radio
             return v + MeterCalOffsetEffective + AttenuatorDb;
         }
 
+        /// <summary>Receiver 1 input level, dBFS (-200 while off).</summary>
+        public float AdcDbfs() => _powerOn ? WDSP.CalculateRXMeter(0, 0, WDSP.MeterType.ADC_REAL) : -200f;
+
         public static string SUnits(float dbm)
         {
             // S9 = -73 dBm, 6 dB per S unit (HF)

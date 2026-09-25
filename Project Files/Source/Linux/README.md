@@ -11,7 +11,7 @@ in stages:
 | 4 | Setup and calibration: attenuator, level calibration, PA gain, filter edges, antennas | **Done**: see [Setup and calibration](#setup-and-calibration) |
 | 5 | WDSP 2.10, and receive noise reduction: AetherSDR's NR2, RN2, NR4, DFNR and WDSP's NNR | **Done**: see [WDSP 2.10](#wdsp-210) and [Noise reduction](#noise-reduction) |
 | 6 | Transmit audio processing: VOX, TX equaliser, leveler, compressor, CESSB, CFC, phase rotator | **Done**: see [Transmit audio processing](#transmit-audio-processing) |
-| 6a | CAT / TCI control (WSJT-X, fldigi, loggers) | Planned |
+| 6a | CAT / TCI control (WSJT-X, fldigi, Hamlib, loggers): serial ports, USB to RS232, virtual ports, TCP, TCI | **Done**: see [CAT and TCI](#cat-and-tci) |
 | 7 | PureSignal | **Done**: see [PureSignal](#puresignal) |
 | 8 | RX2, sub-receiver, band stacking, more meters | Planned |
 
@@ -403,7 +403,8 @@ transmit checks are listed under [Transmit](#transmit), the setup checks
 under [Setup and calibration](#setup-and-calibration), the noise reduction
 checks under [Noise reduction](#noise-reduction), and the transmit audio
 checks under [Transmit audio processing](#transmit-audio-processing), and
-the PureSignal checks under [PureSignal](#puresignal). All 103 checks pass:
+the PureSignal checks under [PureSignal](#puresignal). All 109 checks pass
+(`--cat` runs the [CAT and TCI](#cat-and-tci) checks):
 
 ```sh
 dotnet run --project Tools/Thetis.RadioSim -- --status-file /tmp/sim.json &
@@ -765,10 +766,122 @@ The checks also cover:
 Not tested yet: a real radio. The simulator's PA is a model, and the
 feedback path of real hardware (coupler, attenuator, timing) will differ.
 
+## CAT and TCI
+
+![Setup window, CAT / TCI tab](docs/screenshot-cat.png)
+
+Logging, digital-mode and contest programs (WSJT-X, JTDX, fldigi, Hamlib's
+rigctld, loggers) and controllers on other computers can read and set the
+frequency, mode, filter and transmit state. The settings are in
+**Setup → CAT / TCI**, and changes take effect at once.
+
+**Where programs connect:**
+
+| | What it is | Use it for |
+|---|---|---|
+| **Serial port** | The computer's own port (`/dev/ttyS0`) or a USB to RS232 adapter (`/dev/ttyUSB0`, `/dev/ttyACM0`: FTDI, Prolific, CH340, CP210x). USB adapters are listed and remembered under their `/dev/serial/by-id` name, which does not change when the adapter goes into another socket. | A program on another computer through a null-modem cable, or a hardware controller. |
+| **Virtual port** | A pseudo-terminal that programs on this computer open by name: `~/.local/share/thetis-linux/cat1` (to `cat4`). No cable, com0com or socat is needed. | WSJT-X, fldigi and Hamlib on the same computer: type the name as the radio's serial port (any speed). |
+| **CAT server (TCP)** | The same commands over TCP, port 31001 (as the Windows console). | Hamlib's network form (`-r 127.0.0.1:31001`), and controllers on the network. |
+| **TCI server** | Expert Electronics' TCI over WebSocket, port 50001 (as the Windows console). | TCI programs (JTDX, MSHV, loggers, SDC). |
+
+There are four CAT ports, each a serial or a virtual port with its own speed
+and framing (1200 to 115200 baud, 7 or 8 bits, parity, 1 or 2 stop bits,
+RTS/CTS or XON/XOFF handshake). DTR and RTS can be held on for interfaces
+that take power from them. Each port's line in Setup says what it is doing,
+for example "open", "waiting for it (unplugged?)" or "permission denied".
+A USB adapter that is unplugged is reopened when it comes back.
+
+A serial port can also **key the transmitter** from its CTS, DSR or DCD
+input (optionally inverted). That input can be a footswitch, or another
+program's RTS/DTR PTT through a null-modem cable. The same transmit checks
+apply as for MOX (transmit allowed, region, band).
+
+**Permissions:** on Linux Mint, serial ports belong to the `dialout` group.
+If Setup says the user may not open them, run
+`sudo usermod -aG dialout $USER`, then log out and in again. Virtual ports
+and the network servers need nothing.
+
+**In the program:** choose the radio **Kenwood TS-2000** (Hamlib model
+2014), or **FlexRadio/ANAN PowerSDR/Thetis** (Hamlib model 2048), which uses
+the ZZ commands. Choose the port or the virtual port's name, and PTT method
+**CAT**. For WSJT-X with TS-2000, either set its mode to "USB" and turn on
+**Report DIGU / DIGL as USB / LSB** in Setup, which makes USB select DIGU.
+Or leave that off and set USB or DIGU on the main window.
+
+**Commands:** the Windows console's (Console/CAT): Kenwood TS-2000 and the
+Thetis ZZ commands, with the console's formats. The console's own command
+table (`CATStructs.xml`) is embedded unchanged, so lengths and errors match:
+`?;` for an unknown command or wrong length, and no answer to a set. The 88
+commands implemented are those for features this version has:
+
+* **Frequency and tuning:** FA, FB, ZZFA, ZZFB, ZZFT, IF, ZZIF, UP, DN, ZZSA,
+  ZZSB, ZZSD, ZZSU, ZZST, ZZAC, ZZAD, ZZAU, ZZAE, ZZAF, FR, FT, ZZSP
+* **Mode and filter:** MD, ZZMD, ZZML, SH, SL, ZZFL, ZZFH, ZZFI
+* **Bands:** BU, BD, ZZBU, ZZBD, ZZBS
+* **Receiver:** AG, ZZAG, ZZMA (mute), GT, ZZGT, ZZAR (AGC gain), ZZRX
+  (attenuator), NT, ZZNT, NB, ZZNA, ZZNE, ZZNR, ZZNS, SM, ZZSM, ZZRM, ZZXN,
+  ZZVA (PC audio)
+* **Transmit:** TX, RX, ZZTX, ZZTU, ZZUT (two-tone), PC, ZZPC, ZZTO, MG, ZZMG,
+  PR, ZZCP, ZZCT, ZZET, ZZVE, ZZXH, ZZTH, ZZTL, ZZLI (PS-A), ZZUS (PureSignal
+  single calibration), ZZXV
+* **Radio:** PS, ZZPS (power), ID, ZZID, ZZVN, ZZZM, ZZZV, AI, ZZAI, RT, XT,
+  ZZRT, ZZXS
+
+Differences from the Windows console:
+
+* `TX0;`, `TX1;` and `TX2;` also key the transmitter. Hamlib's TS-2000 and
+  TS-480 drivers send these for PTT, and the console's table refuses them,
+  so Hamlib's TS-2000 PTT does not work with the Windows console.
+* NR selection (ZZNE): 0 off, 2 NR2, 3 RN2 (RNNoise, the console's NR3), 4 NR4.
+  1 selects NNR, and DFNR or NNR read back as 1. ZZNR switches NNR and ZZNS
+  switches NR2.
+* Not offered yet (answered `0`, or `?;` when set): RIT, XIT, split and the
+  noise blanker. VFO B is remembered and reported but has no receiver yet.
+* Auto information (AI1 / ZZAI1) sends `FA...;` and `FB...;` when the VFOs
+  change, as the console does. **Report DIGU / DIGL as USB / LSB** is the
+  console's "DigU is USB" option. **ID answers as** can be TS-2000, TS-480,
+  TS-50S or SDR-1000.
+
+**TCI** is the Windows console's protocol ("Thetis", 2.0, with the same
+spellings: modes in capitals, AGC `normal`, volume in dB). A client gets the
+state on connecting, ending with `ready;`, and then every change, whoever
+made it. It covers VFO, DDS and IF, modulation, `rx_filter_band`, `trx`,
+`tune`, `drive` and `tune_drive`, `volume`, `mute` and `rx_mute`, NR, ANF,
+AGC mode and gain, `start` and `stop` (power), and the receive and transmit
+sensors. TCI audio and I/Q streaming are not offered yet, so use PC audio
+for the audio.
+
+**Monitor:** Setup's monitor shows every command in (`<`) and out (`>`) on
+each port, for finding out what a program sends.
+
+Tests (`thetis-corecheck <data dir> <status file> --cat`, 80 checks, all
+pass):
+
+* The commands against the simulator: the answers' formats (IF 35
+  characters, ZZIF 36, S-meters, signed ZZ values), errors, several commands
+  in one write, and TX / RX / TX0 keying the simulated radio.
+* **Serial port:** a pseudo-terminal pair stands in for a USB to RS232
+  adapter and its cable. The CAT port opens its end through `SerialPort`,
+  exactly as it opens `/dev/ttyUSB0`.
+* **Virtual port:** a program reads and sets the radio, closes the port, and
+  another program reopens it.
+* **TCP:** auto information sends the frequency after tuning.
+* **TCI:** the initial state, setting VFO, mode, filter and volume, a change
+  made elsewhere reaching the client, the sensors, and `trx` keying.
+* **Hamlib 4.5.5:** the TS-2000 and PowerSDR/Thetis drivers set and read the
+  frequency and mode and key PTT, on the virtual port and over TCP.
+
+Also tried in the application: Hamlib and TCI moving the main window's VFO,
+band and mode buttons, and `PS1;` turning the radio on.
+
+Not tested: a physical RS232 port or USB adapter (this environment has
+none), and the CTS / DSR / DCD PTT input. A pseudo-terminal has no modem
+lines.
+
 ## Not yet ported
 
 See the stage table at the top for what is planned next. Beyond that list:
-EER, two-tone, transverters, diversity, ADC assignment, the Hermes-Lite 2
+EER, transverters, diversity, ADC assignment, the Hermes-Lite 2
 I/O board, the MeterManager meters, MIDI, recording, and skins.
 
 Notes for those stages:

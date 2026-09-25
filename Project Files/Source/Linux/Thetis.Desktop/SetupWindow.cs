@@ -30,7 +30,7 @@ using Thetis.Radio;
 
 namespace Thetis.Desktop
 {
-    public sealed class SetupWindow : Window
+    public sealed partial class SetupWindow : Window
     {
         private readonly RadioController _radio;
         private readonly Settings _settings;
@@ -42,8 +42,11 @@ namespace Thetis.Desktop
 
         public SetupWindow() : this(null, new Settings(), HPSDRModel.HERMES, () => { }) { }   // designer
 
-        public SetupWindow(RadioController radio, Settings settings, HPSDRModel model, Action save)
+        public SetupWindow(RadioController radio, Settings settings, HPSDRModel model, Action save,
+                           Thetis.Cat.CatService cat = null, Action applyCat = null)
         {
+            _cat = cat;
+            _applyCat = applyCat;
             _radio = radio;
             _settings = settings;
             _model = model;
@@ -64,14 +67,15 @@ namespace Thetis.Desktop
             tabs.Items.Add(new TabItem { Header = "PA gain", Content = Scroll(PaTab()) });
             tabs.Items.Add(new TabItem { Header = "Filters", Content = Scroll(FiltersTab()) });
             tabs.Items.Add(new TabItem { Header = "Antennas", Content = Scroll(AntennaTab()) });
+            tabs.Items.Add(new TabItem { Header = "CAT / TCI", Content = Scroll(CatTab()) });
             Content = tabs;
-            Closed += (_, _) => { _psTimer?.Stop(); _save(); };
+            Closed += (_, _) => { _psTimer?.Stop(); CloseCatTab(); _save(); };
         }
 
         private readonly TabControl _tabs;
 
         /// <summary>The tab headers, in order (the main window's Setup menu lists them).</summary>
-        public static readonly string[] TabNames = { "Receive", "Noise reduction", "Transmit audio", "PureSignal", "PA gain", "Filters", "Antennas" };
+        public static readonly string[] TabNames = { "Receive", "Noise reduction", "Transmit audio", "PureSignal", "PA gain", "Filters", "Antennas", "CAT / TCI" };
 
         /// <summary>Bring the tab with this header to the front.</summary>
         public void ShowTab(string header)
@@ -490,20 +494,6 @@ namespace Thetis.Desktop
             TxNumber(g, "  high (Hz)", t.SideChannelHighHz, 100, 10000, 10, "0", v => t.SideChannelHighHz = v);
             TxCheck(g, "Audio look-ahead", t.LookAheadOn, v => t.LookAheadOn = v);
             TxNumber(g, "  look-ahead (ms)", t.LookAheadMs, 10, 250, 5, "0", v => t.LookAheadMs = (int)v);
-            p.Children.Add(g);
-
-            g = Grid2();
-            p.Children.Add(Heading("NNR - WDSP neural noise reduction"));
-            p.Children.Add(Text("Works on the audio resampled to 16 kHz, so it passes audio up to 8 kHz.", true));
-            AddChoice(g, "Model", NrParam.NnrModel, new[] { "Standard", "Large (more CPU)" });
-            AddChoice(g, "Position", NrParam.NnrPosition, new[] { "Before AGC", "After AGC" });
-            AddNumber(g, "Mask floor (dB, the most it removes)", NrParam.NnrMaskFloorDb, -60, 0, 1, "0");
-            AddNumber(g, "Maximum gain (dB)", NrParam.NnrMaxGainDb, 0, 24, 1, "0");
-            AddNumber(g, "Strength (alpha)", NrParam.NnrAlpha, 0, 4, 0.05, "0.00");
-            AddNumber(g, "Strength knee (dB)", NrParam.NnrAlphaKneeDb, 0, 40, 1, "0");
-            AddNumber(g, "Noise tracking time (s)", NrParam.NnrTau, 0.05, 30, 0.05, "0.00");
-            AddNumber(g, "Gain smoothing attack (ms)", NrParam.NnrSmoothAttackMs, 0, 500, 5, "0");
-            AddNumber(g, "Gain smoothing release (ms)", NrParam.NnrSmoothReleaseMs, 0, 500, 5, "0");
             p.Children.Add(g);
 
             var reset = new Button { Content = "Defaults", Margin = new Thickness(0, 8) };
