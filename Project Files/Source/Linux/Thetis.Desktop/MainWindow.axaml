@@ -137,26 +137,29 @@
           </Panel>
           <TextBlock x:Name="VfoInfo" Foreground="#9AA4AE" FontSize="12" Margin="4,0,0,0" />
         </StackPanel>
-        <StackPanel Grid.Column="1">
-          <WrapPanel x:Name="BandPanel" />
-          <WrapPanel x:Name="ModePanel" />
-          <WrapPanel x:Name="FilterPanel" />
-        </StackPanel>
+        <!-- top docking place: the band, mode and filter panels by default (MainWindow.Panels.cs) -->
+        <StackPanel x:Name="TopDock" Grid.Column="1" />
       </Grid>
     </Border>
 
-    <!-- panadapter + waterfall, with the docking places for the transmit audio panel
-         (MainWindow.TxPanel.cs sets the widths and heights) -->
+    <!-- panadapter + waterfall, with the docking places for the panels
+         (MainWindow.Panels.cs sets the widths and heights) -->
     <Grid x:Name="WorkArea" ColumnDefinitions="0,Auto,*,Auto,0" RowDefinitions="*,Auto,0">
-      <ContentControl x:Name="LeftDock" Grid.Column="0" />
+      <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="LeftDock" />
+      </ScrollViewer>
       <GridSplitter x:Name="LeftSplitter" Grid.Column="1" Width="5" IsVisible="False" ResizeDirection="Columns" Background="#2C353E" />
       <Border Grid.Column="2" Classes="group" Padding="0">
         <c:PanafallView x:Name="Panafall" />
       </Border>
       <GridSplitter x:Name="RightSplitter" Grid.Column="3" Width="5" IsVisible="False" ResizeDirection="Columns" Background="#2C353E" />
-      <ContentControl x:Name="RightDock" Grid.Column="4" />
+      <ScrollViewer Grid.Column="4" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="RightDock" />
+      </ScrollViewer>
       <GridSplitter x:Name="BottomSplitter" Grid.Row="1" Grid.ColumnSpan="5" Height="5" IsVisible="False" ResizeDirection="Rows" Background="#2C353E" />
-      <ContentControl x:Name="BottomDock" Grid.Row="2" Grid.ColumnSpan="5" />
+      <ScrollViewer Grid.Row="2" Grid.ColumnSpan="5" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="BottomDock" Orientation="Horizontal" />
+      </ScrollViewer>
     </Grid>
   </DockPanel>
 </Window>

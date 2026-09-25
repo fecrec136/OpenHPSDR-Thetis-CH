@@ -76,12 +76,13 @@ namespace Thetis.Desktop
             _radio.TxStateChanged += () => Dispatcher.UIThread.Post(RefreshTx);
 
             BuildStaticControls();
+            BuildPanels();
             ApplySettingsToRadio();
             RefreshAll();
 
             Opened += async (_, _) => await StartDspAsync();
             Closing += (_, _) => Shutdown();
-            Opened += (_, _) => { if (_settings.TxPanelVisible) ShowTxPanel(true); };
+            Opened += (_, _) => PlacePanels();
             Opened += (_, _) => StartCat();
             // killed or crashed without closing the window: Thetis.Core unkeys the
             // radio; keep the settings too
@@ -300,7 +301,7 @@ namespace Thetis.Desktop
                 _radio.ApplyTxProcessing();
                 _txPanel?.Refresh();
             };
-            TxPanelToggle.IsCheckedChanged += (_, _) => { if (!_updating) ShowTxPanel(TxPanelToggle.IsChecked == true); };
+            TxPanelToggle.IsCheckedChanged += (_, _) => { if (!_updating) ShowPanel(TxPanelKey, TxPanelToggle.IsChecked == true); };
             MicSourceBox.SelectionChanged += (_, _) =>
             {
                 if (_updating || MicSourceBox.SelectedIndex < 0) return;
@@ -503,7 +504,8 @@ namespace Thetis.Desktop
             _timer.Stop();
             _settings.WindowWidth = Width;
             _settings.WindowHeight = Height;
-            RememberTxPanelLayout();
+            RememberPanelLayout();
+            _closingMain = true;
             SaveSettings();
             _radio.Dispose();
         }
@@ -756,7 +758,7 @@ namespace Thetis.Desktop
                     : "Noise reduction";
                 RefreshTxMeters();
             }
-            if (_meterDivider % 3 == 0) _txPanel?.UpdateMeters();
+            if (_meterDivider % 3 == 0 && IsPanelShown(TxPanelKey)) _txPanel.UpdateMeters();
         }
 
         #endregion
@@ -799,7 +801,7 @@ namespace Thetis.Desktop
             VoxToggle.IsChecked = _settings.TxProcessing.VoxOn;
             CompToggle.IsChecked = _settings.TxProcessing.CompressorOn;
             EqToggle.IsChecked = _settings.TxProcessing.EqOn;
-            TxPanelToggle.IsChecked = _settings.TxPanelVisible;
+            TxPanelToggle.IsChecked = IsPanelShown(TxPanelKey);
             PsToggle.IsChecked = _settings.PureSignalAutoCal;
             TwoToneToggle.IsChecked = _radio.TwoToneOn;
             TwoToneToggle.IsEnabled = _radio.PowerOn;

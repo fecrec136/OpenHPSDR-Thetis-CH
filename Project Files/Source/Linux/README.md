@@ -267,8 +267,8 @@ from the Windows sources as far as possible.
 | `Tools/Thetis.RadioSim/` | Protocol 1 radio simulator (see below) |
 | `Tools/Thetis.CoreCheck/` | Headless end-to-end test of `Thetis.Core` |
 
-These Windows source files are compiled into `Thetis.Core` **unmodified**, so
-upstream changes flow in automatically: `HPSDR/clsRadioDiscovery.cs`,
+These Windows source files (kept in `Source/Console`) are compiled into
+`Thetis.Core` **unmodified**: `HPSDR/clsRadioDiscovery.cs`,
 `HPSDR/NetworkIOImports.cs`, `HPSDR/specHPSDR.cs`, `HPSDR/Penny.cs`, `dsp.cs`,
 `ivac.cs`, `enums.cs` and `clsHardwareSpecific.cs`. The only change to them is in
 `clsRadioDiscovery.cs`: two network-interface properties that .NET does not
@@ -325,6 +325,28 @@ Shortcuts: Ctrl+S save, Ctrl+D discover, Ctrl+F enter a frequency, Ctrl+,
 setup, Ctrl+Q exit, F1 keyboard and mouse help, and Alt with the underlined
 letter opens a menu. MOX and TUNE have no shortcut, so a stray key press
 cannot key the transmitter.
+
+### Dockable panels
+
+![Bands on the left, modes at the bottom, filter widths in their own window, transmit audio on the right](docs/screenshot-panels.png)
+
+The **band buttons**, the **mode buttons**, the **filter width buttons** and
+the [transmit audio panel](#transmit-audio-panel) are separate panels. Each
+has a title bar with buttons that put it:
+
+* ⬒ at the top, next to the VFO. The button panels are here by default, where
+  the Windows console has them.
+* ◧ on the left or ◨ on the right of the panadapter
+* ⬓ below the panadapter
+* ⧉ in a window of its own
+
+✕ closes a panel. Dragging a docked panel's title bar takes it out into a
+window. Several panels can share a place, and they keep their order. The
+lines between the panadapter and the left, right and bottom places resize
+them. A place with only button panels fits them, and the button rows wrap to
+its width. **View → Panels** shows, hides and places each panel, and
+**Reset the panel layout** puts everything back. Where each panel is and its
+window's position and size are saved.
 
 ### PC audio (VAC)
 
@@ -671,7 +693,7 @@ CoreCheck tests this against the transmitted I/Q:
 
 ![Transmit audio panel docked on the right, transmitting](docs/screenshot-tx-panel.png)
 
-The **AUDIO** button next to EQ (or **View → Transmit audio panel**, or
+The **AUDIO** button next to EQ (or **View → Panels → Transmit audio**, or
 Ctrl+Shift+A) opens a panel with the controls used while operating:
 
 * mic gain, and the transmit chain's meters: MIC, EQ, leveler and its gain,
@@ -685,11 +707,8 @@ Ctrl+Shift+A) opens a panel with the controls used while operating:
   per-band CFC profile stays in Setup)
 * VOX and expander on/off, VOX threshold and hold, expander ratio
 
-It is dockable. The buttons in its title bar put it at the left or right of
-the panadapter, below it, or in a window of its own. Dragging the title bar
-takes a docked panel out into a window. The line between the panel and the
-panadapter resizes it. **View → Transmit audio panel position** chooses the
-place too. The place and sizes are saved. The panel, Setup and the main
+It is one of the [dockable panels](#dockable-panels): on the left or right of the
+panadapter, below it, or in a window of its own. The panel, Setup and the main
 window's VOX / COMP / EQ buttons and mic gain slider change the same settings
 and follow each other.
 

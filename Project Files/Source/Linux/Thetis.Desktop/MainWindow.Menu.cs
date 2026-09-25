@@ -54,7 +54,7 @@ namespace Thetis.Desktop
             Bind(Key.F, KeyModifiers.Control, BeginVfoEdit);
             Bind(Key.OemComma, KeyModifiers.Control, () => OpenSetup());
             Bind(Key.F1, KeyModifiers.None, ShowShortcuts);
-            Bind(Key.A, KeyModifiers.Control | KeyModifiers.Shift, () => ShowTxPanel(!_settings.TxPanelVisible));
+            Bind(Key.A, KeyModifiers.Control | KeyModifiers.Shift, () => ShowPanel(TxPanelKey, !IsPanelShown(TxPanelKey)));
         }
 
         #region menus
@@ -200,14 +200,7 @@ namespace Thetis.Desktop
             Item("_Reset the spectrum scale", ResetSpectrumView),
             new Separator(),
             Check("_Transmit settings panel", TxSettingsExpander.IsExpanded, () => TxSettingsExpander.IsExpanded = !TxSettingsExpander.IsExpanded),
-            Check("Transmit _audio panel  (Ctrl+Shift+A)", _settings.TxPanelVisible, () => ShowTxPanel(!_settings.TxPanelVisible)),
-            Sub("Transmit audio panel _position", new List<Control>
-            {
-                Radio("_Left", _settings.TxPanelDock == TxPanelDock.Left, () => DockTxPanel(TxPanelDock.Left)),
-                Radio("_Right", _settings.TxPanelDock == TxPanelDock.Right, () => DockTxPanel(TxPanelDock.Right)),
-                Radio("_Bottom", _settings.TxPanelDock == TxPanelDock.Bottom, () => DockTxPanel(TxPanelDock.Bottom)),
-                Radio("_Own window", _settings.TxPanelDock == TxPanelDock.Float, () => DockTxPanel(TxPanelDock.Float)),
-            }),
+            Sub("_Panels", PanelMenus()),
         };
 
         private List<Control> SetupMenu()

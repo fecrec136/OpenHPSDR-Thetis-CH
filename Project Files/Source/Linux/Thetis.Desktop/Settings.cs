@@ -73,9 +73,15 @@ namespace Thetis.Desktop
         public TxProcessing TxProcessing { get; set; } = new TxProcessing();
         /// <summary>CAT ports (serial, USB to RS232, virtual), the TCP CAT server and the TCI server.</summary>
         public Thetis.Cat.CatSettings Cat { get; set; } = new Thetis.Cat.CatSettings();
-        /// <summary>The transmit audio panel: shown, where, and its size (docked) or window (floating).</summary>
+        /// <summary>Dockable panels (bands, modes, filters, transmit audio) by key: shown, where, order, own window.</summary>
+        public Dictionary<string, PanelLayout> Panels { get; set; } = new Dictionary<string, PanelLayout>();
+        /// <summary>Sizes of the docking places (shared by the panels docked there).</summary>
+        public double DockLeftWidth { get; set; } = 330;
+        public double DockRightWidth { get; set; } = 330;
+        public double DockBottomHeight { get; set; } = 330;
+        /// <summary>Old transmit audio panel settings; read once into Panels["txaudio"].</summary>
         public bool TxPanelVisible { get; set; }
-        public Thetis.Desktop.Controls.TxPanelDock TxPanelDock { get; set; } = Thetis.Desktop.Controls.TxPanelDock.Right;
+        public Thetis.Desktop.Controls.PanelDock TxPanelDock { get; set; } = Thetis.Desktop.Controls.PanelDock.Right;
         public double TxPanelWidth { get; set; } = 330;
         public double TxPanelHeight { get; set; } = 330;
         public int? TxPanelX { get; set; }
@@ -144,6 +150,20 @@ namespace Thetis.Desktop
             File.WriteAllText(tmp, JsonSerializer.Serialize(this, SettingsJson.Default.Settings));
             File.Move(tmp, FilePath, true);
         }
+    }
+
+    /// <summary>Where a dockable panel is.</summary>
+    public sealed class PanelLayout
+    {
+        public bool Visible { get; set; } = true;
+        public Thetis.Desktop.Controls.PanelDock Dock { get; set; } = Thetis.Desktop.Controls.PanelDock.Top;
+        /// <summary>Position among the panels in the same docking place.</summary>
+        public int Order { get; set; }
+        /// <summary>Its own window: position and size (0 = fit the contents).</summary>
+        public int? X { get; set; }
+        public int? Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
     }
 
     /// <summary>

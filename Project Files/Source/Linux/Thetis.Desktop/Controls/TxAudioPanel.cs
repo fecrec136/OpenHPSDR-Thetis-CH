@@ -5,8 +5,8 @@ This file is part of a program that implements a Software-Defined Radio.
 The transmit audio panel: microphone gain, the 10-band graphic EQ, leveler,
 compressor, CESSB, CFC, phase rotator, VOX and downward expander, with the
 transmit chain's meters.  It edits the same TxProcessing settings as
-Setup > Transmit audio, and the main window docks it at the left, right or
-bottom, or shows it in a window of its own (MainWindow.TxPanel.cs).
+Setup > Transmit audio.  It is one of the main window's dockable panels
+(DockFrame, MainWindow.Panels.cs).
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -29,9 +29,7 @@ using Thetis.Radio;
 
 namespace Thetis.Desktop.Controls
 {
-    public enum TxPanelDock { Left, Right, Bottom, Float }
-
-    public sealed class TxAudioPanel : UserControl
+    public sealed class TxAudioPanel : UserControl, IDockAware
     {
         private readonly RadioController _radio;
         private readonly Settings _settings;
@@ -39,25 +37,14 @@ namespace Thetis.Desktop.Controls
         private readonly List<Action> _refreshers = new List<Action>();
         private readonly List<(string name, ProgressBar bar, TextBlock text, double min, double max, Func<TxAudioLevels, float?> get)> _meters =
             new List<(string, ProgressBar, TextBlock, double, double, Func<TxAudioLevels, float?>)>();
-        private readonly Dictionary<TxPanelDock, Button> _dockButtons = new Dictionary<TxPanelDock, Button>();
         private bool _updating;
-        private Point? _dragFrom;
         private readonly WrapPanel _body = new WrapPanel { Orientation = Orientation.Horizontal };
         private readonly ScrollViewer _scroll = new ScrollViewer();
 
         private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#9AA4AE"));
 
-        /// <summary>The user asked to dock the panel elsewhere, or to float it.</summary>
-        public event Action<TxPanelDock> DockRequested;
-
-        /// <summary>The user closed the panel.</summary>
-        public event Action CloseRequested;
-
         /// <summary>A setting changed here (the main window's VOX / COMP / EQ buttons and mic gain follow).</summary>
         public event Action Changed;
-
-        /// <summary>The header was dragged away while docked: float the panel at this screen point.</summary>
-        public event Action<PixelPoint> TearOffRequested;
 
         private TxProcessing Tx => _settings.TxProcessing ??= new TxProcessing();
 
@@ -67,8 +54,6 @@ namespace Thetis.Desktop.Controls
             _settings = settings;
             _applyTimer.Tick += (_, _) => { _applyTimer.Stop(); _radio.ApplyTxProcessing(); };
 
-            var root = new DockPanel();
-            root.Children.Add(Header());
             var body = _body;
             body.Children.Add(MetersGroup());
             body.Children.Add(EqGroup());
@@ -77,81 +62,14 @@ namespace Thetis.Desktop.Controls
             body.Children.Add(VoxGroup());
             _scroll.Content = body;
             _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            Dock = TxPanelDock.Right;
-            root.Children.Add(_scroll);
-            Content = new Border { Background = new SolidColorBrush(Color.Parse("#12171C")), Child = root };
+            DockChanged(PanelDock.Right);
+            Content = _scroll;
             Refresh();
         }
 
-        /// <summary>Which dock button to show as current.</summary>
-        public TxPanelDock Dock
-        {
-            set
-            {
-                foreach (var (d, b) in _dockButtons) b.IsEnabled = d != value;
-                // at the bottom the groups stand in one row that scrolls sideways; elsewhere they wrap
-                _scroll.HorizontalScrollBarVisibility = value == TxPanelDock.Bottom ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-            }
-        }
-
-        #region header
-
-        private Control Header()
-        {
-            var bar = new DockPanel { Background = new SolidColorBrush(Color.Parse("#161C22")), Margin = new Thickness(0, 0, 0, 2) };
-            DockPanel.SetDock(bar, Avalonia.Controls.Dock.Top);
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-            DockPanel.SetDock(buttons, Avalonia.Controls.Dock.Right);
-            buttons.Children.Add(DockButton(TxPanelDock.Left, "◧", "Dock on the left"));
-            buttons.Children.Add(DockButton(TxPanelDock.Bottom, "⬓", "Dock at the bottom"));
-            buttons.Children.Add(DockButton(TxPanelDock.Right, "◨", "Dock on the right"));
-            buttons.Children.Add(DockButton(TxPanelDock.Float, "⧉", "Show in a window of its own"));
-            var close = SmallButton("✕", "Close the panel (View > Transmit audio panel opens it again)");
-            close.Click += (_, _) => CloseRequested?.Invoke();
-            buttons.Children.Add(close);
-            bar.Children.Add(buttons);
-            var title = new TextBlock
-            {
-                Text = "Transmit audio", FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0), Cursor = new Cursor(StandardCursorType.SizeAll),
-            };
-            ToolTip.SetTip(title, "Drag to take the panel out of the main window");
-            bar.Children.Add(title);
-
-            // drag the title away to float the panel
-            bar.PointerPressed += (_, e) =>
-            {
-                if (e.GetCurrentPoint(bar).Properties.IsLeftButtonPressed && e.Source is not Button) _dragFrom = e.GetPosition(this);
-            };
-            bar.PointerMoved += (_, e) =>
-            {
-                if (_dragFrom is not Point from) return;
-                var at = e.GetPosition(this);
-                if (Math.Abs(at.X - from.X) + Math.Abs(at.Y - from.Y) < 40) return;
-                _dragFrom = null;
-                var top = TopLevel.GetTopLevel(this);
-                if (top is Window w) TearOffRequested?.Invoke(w.PointToScreen(e.GetPosition(w)));
-            };
-            bar.PointerReleased += (_, _) => _dragFrom = null;
-            return bar;
-        }
-
-        private Button DockButton(TxPanelDock dock, string glyph, string tip)
-        {
-            var b = SmallButton(glyph, tip);
-            b.Click += (_, _) => DockRequested?.Invoke(dock);
-            _dockButtons[dock] = b;
-            return b;
-        }
-
-        private static Button SmallButton(string glyph, string tip)
-        {
-            var b = new Button { Content = glyph, Padding = new Thickness(6, 1), FontSize = 13, MinWidth = 26, HorizontalContentAlignment = HorizontalAlignment.Center };
-            ToolTip.SetTip(b, tip);
-            return b;
-        }
-
-        #endregion
+        /// <summary>At the bottom the groups stand in one row that scrolls sideways; elsewhere they wrap.</summary>
+        public void DockChanged(PanelDock dock) =>
+            _scroll.HorizontalScrollBarVisibility = dock == PanelDock.Bottom ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
 
         #region groups
 
