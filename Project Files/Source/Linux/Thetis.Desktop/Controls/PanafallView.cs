@@ -17,6 +17,7 @@ of the License, or (at your option) any later version.
 */
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Avalonia;
@@ -43,6 +44,8 @@ namespace Thetis.Desktop.Controls
         public double MinDbm { get; set; } = -140;
         public double PanFraction { get; set; } = 0.45;
         public bool Active { get; set; }
+        /// <summary>The region's amateur allocations, Hz: their edges are drawn as red dashed lines.</summary>
+        public IReadOnlyList<(long low, long high)> BandLimits { get; set; } = Array.Empty<(long, long)>();
 
         /// <summary>Click-to-tune: new VFO frequency in Hz.</summary>
         public event Action<long> TuneTo;
@@ -63,6 +66,8 @@ namespace Thetis.Desktop.Controls
         private static readonly IBrush _label = new SolidColorBrush(Color.Parse("#7F8C99"));
         private static readonly IBrush _passband = new SolidColorBrush(Color.FromArgb(48, 120, 170, 255));
         private static readonly IPen _vfo = new Pen(new SolidColorBrush(Color.Parse("#FF5252")), 1);
+        private static readonly IPen _bandLimit = new Pen(new SolidColorBrush(Color.Parse("#E53935")), 2, new DashStyle(new double[] { 4, 3 }, 0));
+        private static readonly IBrush _bandLimitText = new SolidColorBrush(Color.Parse("#EF5350"));
         private static readonly IPen _trace = new Pen(new SolidColorBrush(Color.Parse("#FFE082")), 1.2);
         private static readonly IBrush _fill = new LinearGradientBrush
         {
@@ -202,6 +207,23 @@ namespace Thetis.Desktop.Controls
                 }
                 ctx.DrawGeometry(_fill, null, fillGeo);
                 ctx.DrawGeometry(null, _trace, geo);
+            }
+
+            // band limits of the region: red dashed lines with their frequency
+            foreach (var (lo, hi) in BandLimits)
+            {
+                foreach (long edge in new[] { lo, hi })
+                {
+                    double off = edge - CenterHz;
+                    if (off < SpanLowHz || off > SpanHighHz) continue;
+                    double x = Math.Round(XForOffset(off, w)) + 0.5;
+                    ctx.DrawLine(_bandLimit, new Point(x, 0), new Point(x, ph));
+                    string txt = (edge / 1e6).ToString("0.000###", CultureInfo.InvariantCulture);
+                    var ft = new FormattedText(txt, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, _font, 10, _bandLimitText);
+                    // the label goes on the inside of the band
+                    double lx = edge == lo ? x + 3 : x - ft.Width - 3;
+                    ctx.DrawText(ft, new Point(Math.Clamp(lx, 0, Math.Max(0, w - ft.Width)), 2));
+                }
             }
 
             // VFO marker

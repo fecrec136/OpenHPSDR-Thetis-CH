@@ -72,6 +72,11 @@ namespace Thetis.Radio
 
         /// <summary>Raised (on any thread) when a request to transmit is refused or transmit is stopped by a safety feature.</summary>
         public event Action<string> TxRefused;
+        /// <summary>
+        /// Raised (on any thread) when transmitting is refused because the signal would be outside
+        /// the region's amateur bands (after TxRefused, with the same message).
+        /// </summary>
+        public event Action<string> TxRefusedOutOfBand;
         /// <summary>Raised (on any thread) when the radio keys or unkeys.</summary>
         public event Action TxStateChanged;
 
@@ -304,8 +309,11 @@ namespace Thetis.Radio
         #region keying
 
         /// <summary>Why transmitting at the current settings would be refused, or null if it is allowed.</summary>
-        public string WhyTxRefused(bool tune)
+        public string WhyTxRefused(bool tune) => TxRefusal(tune, out _);
+
+        private string TxRefusal(bool tune, out bool outOfBand)
         {
+            outOfBand = false;
             if (!_powerOn) return "The radio is not on.";
             if (!TransmitAllowed) return "Transmit is disabled. Enable it in the transmit settings first.";
             if (Region == TxRegion.None) return "Choose your region in the transmit settings first.";
@@ -313,7 +321,16 @@ namespace Thetis.Radio
             if (IsCw(_mode) && !tune) return "CW keying is not supported yet; use TUNE for a carrier.";
             var (lo, hi) = tune ? (TuneToneHz, TuneToneHz) : TxPassband(_mode);
             if (!BandPlanRegions.IsTxAllowed(Region, TxDdsMHz(tune), lo, hi))
-                return $"{_frequencyMHz:0.000000} MHz with this transmit filter is outside the amateur bands for {Region}.";
+            {
+                outOfBand = true;
+                string where = BandPlanRegions.InBand(Region, _frequencyMHz)
+                    ? $"with this transmit filter ({Math.Min(lo, hi)} to {Math.Max(lo, hi)} Hz) the signal would cross the band edge"
+                    : "it is outside the amateur bands";
+                var near = BandPlanRegions.NearestAllocation(Region, _frequencyMHz);
+                string band = near is (double blo, double bhi) ? $" The band here is {blo:0.000###} to {bhi:0.000###} MHz." : "";
+                return FormattableString.Invariant(
+                    $"Transmitting is not allowed at {_frequencyMHz:0.000000} MHz: {where} for {BandPlanRegions.RegionName(Region)}.{band}");
+            }
             return null;
         }
 
@@ -363,10 +380,11 @@ namespace Thetis.Radio
                     if (tune == _tuning && twoTone == _twoTone) return true;
                     KeyDown();               // switching between MOX, TUNE and two-tone
                 }
-                reason = WhyTxRefused(tune);
+                reason = TxRefusal(tune, out bool outOfBand);
                 if (reason != null)
                 {
                     TxRefused?.Invoke(reason);
+                    if (outOfBand) TxRefusedOutOfBand?.Invoke(reason);
                     return false;
                 }
                 KeyUp(tune, source);
@@ -511,9 +529,13 @@ namespace Thetis.Radio
                         _lastRadioPtt = ptt;
                         if (ptt && !_mox)
                         {
-                            string why = WhyTxRefused(false);
+                            string why = TxRefusal(false, out bool outOfBand);
                             if (why == null) KeyUp(false, TxSource.RadioPtt);
-                            else TxRefused?.Invoke(why);
+                            else
+                            {
+                                TxRefused?.Invoke(why);
+                                if (outOfBand) TxRefusedOutOfBand?.Invoke(why);
+                            }
                         }
                         else if (!ptt && _mox && _txSource == TxSource.RadioPtt)
                             KeyDown();

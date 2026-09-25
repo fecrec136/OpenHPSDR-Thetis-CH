@@ -90,6 +90,7 @@
                 <NumericUpDown x:Name="TxTimeoutBox" Minimum="0" Maximum="3600" Increment="30" FormatString="0" HorizontalAlignment="Stretch" />
                 <CheckBox x:Name="RadioPttCheck" Content="Key from the radio's PTT input" />
                 <CheckBox x:Name="SwrProtectCheck" Content="SWR protection" />
+                <CheckBox x:Name="BandLimitBeepCheck" Content="Beep when tuning out of a band" ToolTip.Tip="The band limits of the region are the red dashed lines on the panadapter" />
                 <CheckBox x:Name="N2adrCheck" Content="HL2: N2ADR filter board" ToolTip.Tip="Open-collector outputs for the N2ADR filter board (Hermes-Lite 2). Takes effect at the next power on." />
               </StackPanel>
             </Expander>

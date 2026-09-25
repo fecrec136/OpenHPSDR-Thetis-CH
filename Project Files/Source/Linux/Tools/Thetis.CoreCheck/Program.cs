@@ -448,14 +448,22 @@ internal static partial class Program
         radio.MicGainDb = 10;
 
         Console.WriteLine("== transmit gates");
+        int outOfBand = 0;
+        radio.TxRefusedOutOfBand += _ => Interlocked.Increment(ref outOfBand);
         Check(!radio.SetTune(true, out string why) && !radio.Mox, "TUNE refused while transmit is disabled (" + why + ")");
         radio.TransmitAllowed = true;
         Check(!radio.SetTune(true, out why) && !radio.Mox, "TUNE refused until a region is chosen (" + why + ")");
+        Check(outOfBand == 0, "those refusals are not reported as out of band");
         radio.Region = TxRegion.IaruRegion1;
         radio.FrequencyMHz = 7.199;               // USB 100-3000 Hz reaches 7.202 MHz, past the Region 1 band edge
-        Check(!radio.SetMox(true, out why) && !radio.Mox, "MOX refused when the passband leaves the band (" + why + ")");
+        Check(!radio.SetMox(true, out why) && !radio.Mox && outOfBand == 1 && why.Contains("cross the band edge"),
+              "MOX refused when the passband leaves the band, reported as out of band (" + why + ")");
         radio.FrequencyMHz = 7.350;
-        Check(!radio.SetTune(true, out why) && !radio.Mox, "TUNE refused outside the amateur bands (" + why + ")");
+        Check(!radio.SetTune(true, out why) && !radio.Mox && outOfBand == 2 && why.Contains("7.000 to 7.200 MHz"),
+              "TUNE refused outside the amateur bands, naming the band (" + why + ")");
+        Check(BandPlanRegions.InBand(TxRegion.IaruRegion1, 7.2) && !BandPlanRegions.InBand(TxRegion.IaruRegion1, 7.2001) &&
+              BandPlanRegions.InBand(TxRegion.IaruRegion2, 7.25) && !BandPlanRegions.InBand(TxRegion.None, 7.1),
+              "band limits per region (7.200 MHz ends 40 m in Region 1, 7.300 in Region 2)");
         radio.FrequencyMHz = tuneMHz;
         Thread.Sleep(1500);
         Check(!SimStatus(statusFile).GetProperty("mox").GetBoolean(), "radio never keyed by a refused request");

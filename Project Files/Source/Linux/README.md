@@ -507,6 +507,19 @@ Safety features added on top of the Windows behaviour:
   allocations are the common ITU/IARU ones, including the WRC-15 60 m band
   and the five US 60 m channels. They are a safety net, not a statement of
   what your licence allows.
+* **Band limits:** once a region is chosen, the panadapter shows the edges
+  of its allocations as red dashed lines, labelled with their frequency. When
+  a retune takes the VFO from inside a band to outside it, a short beep plays
+  on the computer's default sound output. Moving further out, or back in, is
+  silent. *Beep when tuning out of a band* in the transmit settings turns
+  this off. A request to transmit outside the bands, from MOX, TUNE,
+  2-TONE, CAT, TCI or the radio's PTT input, opens a **Transmit not
+  allowed** message box. It says whether the frequency is outside the bands
+  or the transmit filter would cross the band edge, and gives the band's
+  limits. Only one box opens at a time. VOX stays silent, as it would repeat
+  on every word.
+
+  ![Transmit refused outside the band: the message box, and the 7.200 MHz limit line](docs/screenshot-bandlimits.png)
 * A **transmit timeout** unkeys after 3 minutes by default (0 turns it off).
 * The radio unkeys when:
   * it stops sending data
@@ -521,7 +534,9 @@ Safety features added on top of the Windows behaviour:
 The transmit checks in `Thetis.CoreCheck` (35 of the 57):
 
 * refusal with transmit disabled, with no region, outside the band, and with
-  a passband over a band edge
+  a passband over a band edge. Only the last two are reported as out of band,
+  with the band's limits in the message.
+* the band limits per region
 * filter bits on 40, 20 and 80 m, on receive and on transmit
 * TUNE at 10 %: a carrier at +600 Hz and about 10 W, with forward power and
   SWR meters that agree with the simulator

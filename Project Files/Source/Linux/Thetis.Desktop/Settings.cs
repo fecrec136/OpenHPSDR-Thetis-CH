@@ -62,6 +62,8 @@ namespace Thetis.Desktop
         public int TxTimeoutSeconds { get; set; } = 180;
         public bool RadioPtt { get; set; } = true;
         public bool SwrProtection { get; set; } = true;
+        /// <summary>Beep when the VFO leaves a band of the region (the red band limit lines).</summary>
+        public bool BandLimitBeep { get; set; } = true;
         public bool Hl2N2adrFilterBoard { get; set; }
         public int DrivePercent { get; set; } = 10;
         public int TunePercent { get; set; } = 10;

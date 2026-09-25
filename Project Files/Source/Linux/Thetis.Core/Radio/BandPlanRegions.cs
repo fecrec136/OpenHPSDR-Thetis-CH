@@ -99,6 +99,37 @@ namespace Thetis.Radio
             return list;
         }
 
+        /// <summary>For people: "IARU Region 1".</summary>
+        public static string RegionName(TxRegion region) => region switch
+        {
+            TxRegion.IaruRegion1 => "IARU Region 1",
+            TxRegion.IaruRegion2 => "IARU Region 2",
+            TxRegion.IaruRegion3 => "IARU Region 3",
+            TxRegion.UnitedStates => "the United States",
+            _ => "no region",
+        };
+
+        /// <summary>True if 'mhz' is inside one of the region's allocations (the band limit lines).</summary>
+        public static bool InBand(TxRegion region, double mhz)
+        {
+            foreach (var (lo, hi) in Allocations(region))
+                if (mhz >= lo - 1e-9 && mhz <= hi + 1e-9) return true;
+            return false;
+        }
+
+        /// <summary>The allocation containing 'mhz', or else the nearest one; null for no region.</summary>
+        public static (double lo, double hi)? NearestAllocation(TxRegion region, double mhz)
+        {
+            (double lo, double hi)? best = null;
+            double bestDist = double.MaxValue;
+            foreach (var a in Allocations(region))
+            {
+                double d = mhz < a.lo ? a.lo - mhz : mhz > a.hi ? mhz - a.hi : 0;
+                if (d < bestDist) { bestDist = d; best = a; }
+            }
+            return best;
+        }
+
         /// <summary>
         /// True if everything transmitted -- 'txMHz' plus the TX passband
         /// [lowHz, highHz] -- lies inside one allocation for the region.  For

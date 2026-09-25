@@ -73,6 +73,7 @@ namespace Thetis.Desktop
             Height = _settings.WindowHeight;
             _radio.Status += s => Dispatcher.UIThread.Post(() => StatusText.Text = s);
             _radio.TxRefused += r => Dispatcher.UIThread.Post(() => { StatusText.Text = r; _lastTxMessage = r; });
+            _radio.TxRefusedOutOfBand += r => Dispatcher.UIThread.Post(() => ShowOutOfBandAlert(r));
             _radio.TxStateChanged += () => Dispatcher.UIThread.Post(RefreshTx);
 
             BuildStaticControls();
@@ -319,6 +320,7 @@ namespace Thetis.Desktop
                 if (_updating || RegionBox.SelectedIndex < 0) return;
                 _radio.SetMox(false, out _);
                 _radio.Region = _settings.Region = _regions[RegionBox.SelectedIndex].region;
+                RefreshBandLimits();
                 RefreshTx();
             };
             TxLowBox.ValueChanged += (_, _) => { if (!_updating) ApplyTxFilter(); };
@@ -330,6 +332,7 @@ namespace Thetis.Desktop
             };
             RadioPttCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.RadioPttEnabled = _settings.RadioPtt = RadioPttCheck.IsChecked == true; };
             SwrProtectCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.SwrProtection = _settings.SwrProtection = SwrProtectCheck.IsChecked == true; };
+            BandLimitBeepCheck.IsCheckedChanged += (_, _) => { if (!_updating) _settings.BandLimitBeep = BandLimitBeepCheck.IsChecked == true; };
             N2adrCheck.IsCheckedChanged += (_, _) => { if (!_updating) _radio.Hl2N2adrFilterBoard = _settings.Hl2N2adrFilterBoard = N2adrCheck.IsChecked == true; };
         }
 
@@ -439,6 +442,7 @@ namespace Thetis.Desktop
             _radio.AutoNotch = _settings.AutoNotch;
             _radio.TransmitAllowed = _settings.TransmitAllowed;
             _radio.Region = _settings.Region;
+            RefreshBandLimits();
             _radio.TxTimeoutSeconds = _settings.TxTimeoutSeconds;
             _radio.RadioPttEnabled = _settings.RadioPtt;
             _radio.SwrProtection = _settings.SwrProtection;
@@ -603,6 +607,7 @@ namespace Thetis.Desktop
         private void Tune(double mhz)
         {
             mhz = Math.Clamp(mhz, 0.0, 61.44);
+            CheckBandLimitCrossing(_radio.FrequencyMHz, mhz);
             bool newBand = AttBandKey(mhz) != AttBandKey(_radio.FrequencyMHz);
             _radio.FrequencyMHz = mhz;
             _settings.FrequencyMHz = mhz;
@@ -812,6 +817,7 @@ namespace Thetis.Desktop
             TxTimeoutBox.Value = _settings.TxTimeoutSeconds;
             RadioPttCheck.IsChecked = _settings.RadioPtt;
             SwrProtectCheck.IsChecked = _settings.SwrProtection;
+            BandLimitBeepCheck.IsChecked = _settings.BandLimitBeep;
             N2adrCheck.IsChecked = _settings.Hl2N2adrFilterBoard;
             _updating = false;
             RefreshTxCaptions();
